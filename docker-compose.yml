@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # El backend con Laravel, Filament y SQLite
+  cms-php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: cms_php_app
+    volumes:
+      - .:/var/www
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+
+  # El entorno de Node.js exclusivo para Vite, Tailwind y NPM sin mezclar dependencias
+  cms-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    container_name: cms_node_assets
+    volumes:
+      - .:/var/www
+    ports:
+      - "5173:5173" # Puerto por defecto de Vite para Hot Module Replacement (HMR)
+    depends_on:
+      - cms-php

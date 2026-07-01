@@ -1,0 +1,7 @@
+#!/bin/bash
+# Nota: Si el contenedor está apagado, usa 'run', si está encendido usa 'exec'
+if [ "$(docker compose ps -q cms-php)" ]; then
+    docker compose exec -it cms-php composer "$@"
+else
+    docker run --rm -it -v "$(pwd)":/var/www wp-cms-php composer "$@"
+fi

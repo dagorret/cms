@@ -1,0 +1,33 @@
+# --- Dependencias (La Grasa) ---
+/node_modules
+/vendor
+
+# --- Base de Datos Local (Tus Ensayos se quedan en tu disco) ---
+/*.sqlite
+/*.sqlite-journal
+/*.sqlite-shm
+/*.sqlite-wal
+
+# --- Entorno y Secretos (Seguridad Absoluta) ---
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+
+# --- Compilación de Vite & Assets ---
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+
+# --- Basura del Sistema / Editores ---
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+.DS_Store
+Thumbs.db
