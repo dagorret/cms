@@ -6,6 +6,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.php
+      args:
+        - USER_ID=1000
+        - GROUP_ID=1000
+    user: "1000:1000" # <-- Esto obliga al contenedor a ejecutar TODO como carlos
     container_name: cms_php_app
     volumes:
       - .:/var/www
