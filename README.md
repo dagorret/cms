@@ -22,3 +22,38 @@ Ya no necesitás interactuar con Docker de forma directa para programar. Usás l
 ### 🛸 Gestión de Paquetes (Composer)
 ```bash
 ./composer require filament/filament
+
+
+
+### 🔨 Comandos de Laravel (Artisan)
+
+Bash
+
+```
+./artisan make:model Articulo -m
+./artisan migrate
+
+```
+
+### 🏃 Control de la Orquesta Docker
+
+-   **Levantar el entorno:** `docker compose up -d`
+    
+-   **Apagar el entorno:** `docker compose down`
+    
+-   **Ver estado:** `docker ps`
+    
+
+## 🔒 Seguridad en Git
+
+El archivo `.gitignore` está configurado quirúrgicamente para **NUNCA** subir a internet:
+
+-   Las credenciales locales (`.env`).
+    
+-   Los datos o ensayos reales de tu base de datos (`*.sqlite`).
+    
+-   La grasa de dependencias (`/vendor`, `/node_modules`).
+    
+
+_Desarrollado con ❤️ en CachyOS por Carlos._
+
