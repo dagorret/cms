@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\File;
 
 class SiteBuildCommand extends Command
 {
-    // Ahora el comando te pide obligatoriamente el código del sitio
     protected $signature = 'site:build {site_code}';
     protected $description = 'Compila un sitio específico del CMS y genera el estático en HTML';
 
@@ -47,12 +46,21 @@ class SiteBuildCommand extends Command
             File::makeDirectory($targetFolder, 0755, true, true);
         }
 
-        // 4. Buscamos los posts que pertenezcan a ESTE sitio
-        // (Podés usar el ID o el short_name según cómo los estés vinculando en Filament)
-        $posts = Post::where('site_id', $site->id)
-        ->orWhere('site_id', $site->short_name)
-        ->orderBy('created_at', 'desc')
-        ->get();
+        // ==========================================
+        // 4. ACTUALIZAR Y BUSCAR POSTS DEL SITIO
+        // ==========================================
+        $postsQuery = Post::where('site_id', $site->id)
+        ->orWhere('site_id', $site->short_name);
+
+        // Forzamos a que todos los 'draft' pasen a 'published' en la BD antes de compilar sin disparar eventos
+        Post::withoutEvents(function () use ($postsQuery) {
+            $postsQuery->clone()->where('status', 'draft')->update([
+                'status' => 'published'
+            ]);
+        });
+
+        // Traemos los posts ya actualizados y ordenados para el compilador
+        $posts = $postsQuery->orderBy('created_at', 'desc')->get();
 
         if ($posts->isEmpty()) {
             $this->warn('⚠️ No se encontraron posts asignados a este sitio para compilar.');
@@ -87,7 +95,7 @@ class SiteBuildCommand extends Command
         }
 
         // ==========================================
-        // 6. GENERAR CADA ENSAYO INDIVIDUAL (¡EL QUE FALTABA!)
+        // 6. GENERAR CADA ENSAYO INDIVIDUAL
         // ==========================================
         foreach ($posts as $post) {
             if (empty($post->slug)) {
@@ -101,10 +109,15 @@ class SiteBuildCommand extends Command
 
             $postHtml = view('site.post', compact('post', 'site'))->render();
             File::put($postFolder . '/index.html', $postHtml);
+
+            // Sello de éxito: Guardamos la fecha/hora exacta de la compilación en silencio
+            $post->updateQuietly([
+                'static_built_at' => now()
+            ]);
         }
 
         // ==========================================
-        // GENERAR SITEMAP.XML (Streaming a Disco)
+        // GENERAR SITEMAP.XML
         // ==========================================
         $this->info('🗺️ Generando sitemap.xml dinámico...');
 
@@ -127,7 +140,7 @@ class SiteBuildCommand extends Command
         fclose($sitemapFile);
 
         // ==========================================
-        // GENERAR FEED.XML (RSS Atom - Streaming a Disco)
+        // GENERAR FEED.XML
         // ==========================================
         $this->info('📡 Generando feed.xml (RSS) dinámico...');
 

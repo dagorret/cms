@@ -52,9 +52,16 @@ class PostForm
                      ->default('draft')
                      ->required(),
 
-                     TextInput::make('site_id'),
+                     \Filament\Forms\Components\Select::make('site_id')
+                     ->relationship('site', 'long_name') // Busca la relación 'site' en tu Post y muestra el 'long_name'
+                     ->preload()                          // Carga la lista rápido en memoria
+                     ->searchable()                       // Te deja escribir para filtrar si tenés varios sitios
+                     ->required()
+                     ->label('Sitio Web'),
 
-                     DateTimePicker::make('published_at'),
+                     \Filament\Forms\Components\DateTimePicker::make('published_at')
+                     ->default(now()) // ⚡ Te autopopula la fecha y hora actual al abrir el modal
+                     ->label('Fecha de Publicación'),
 
                      DateTimePicker::make('static_built_at')
                      ->disabled(),

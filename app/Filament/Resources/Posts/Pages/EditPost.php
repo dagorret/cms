@@ -16,4 +16,10 @@ class EditPost extends EditRecord
             DeleteAction::make(),
         ];
     }
+
+    // ⚡ Redirige directo a la tabla al terminar de editar con éxito
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

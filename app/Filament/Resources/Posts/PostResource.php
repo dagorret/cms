@@ -29,7 +29,8 @@ class PostResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return PostsTable::configure($table);
+        return PostsTable::configure($table)
+        ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array
