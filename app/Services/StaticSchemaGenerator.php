@@ -109,8 +109,9 @@ class StaticSchemaGenerator
         $allPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page');
         $chunks = $allPosts->chunk($postsPerPage);
 
-        $maxFrontPages = config('static_cms.max_home_pages', 20);
-        $pagesToRender = $chunks->take($maxFrontPages);
+        // 🔥 FIX ARQUITECTURA: Renderizamos TODAS las páginas reales
+        $pagesToRender = $chunks;
+        $totalPages = $chunks->count();
 
         // Si existía la estructura vieja de carpetas HTML para las páginas, la limpiamos
         if (File::exists($this->targetFolder . '/page')) {
@@ -126,8 +127,8 @@ class StaticSchemaGenerator
                     'posts' => $chunkPosts,
                     'site' => $this->site,
                     'currentPage' => 1,
-                    'totalPages' => min($chunks->count(), $maxFrontPages),
-                                  'subdirUrl' => $subdir
+                    'totalPages' => $totalPages,
+                    'subdirUrl' => $subdir
                 ])->render();
 
                 File::put($this->targetFolder . '/index.html', $indexHtml);
@@ -150,7 +151,6 @@ class StaticSchemaGenerator
         $this->command->comment('   📡 Generando feed.xml...');
 
         $maxFeedItems = config('static_cms.max_feed_items', 50);
-        // Filtramos directamente desde el lote cargado para blindar que nunca dé vacío por desajustes externos
         $feedPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page')->take($maxFeedItems);
 
         $feedPath = $this->targetFolder . '/feed.xml';
@@ -162,7 +162,8 @@ class StaticSchemaGenerator
 
         foreach ($feedPosts as $post) {
             $url = "{$fullBaseUrl}/{$post->slug}/";
-            $title = htmlspecialchars($post->title, ENT_XML1, 'UTF-8');
+            // 🛡️ CORRECCIÓN: Usamos ENT_QUOTES para escapar caracteres especiales de forma segura y estándar
+            $title = htmlspecialchars($post->title, ENT_QUOTES, 'UTF-8');
 
             fwrite($feedFile, '    <item>' . PHP_EOL);
             fwrite($feedFile, "      <title>{$title}</title>" . PHP_EOL);
@@ -213,14 +214,23 @@ class StaticSchemaGenerator
 
         fwrite($indexFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
 
-        foreach ($sitemapFilesCreated as $sitemapFile) {
-            $sitemapUrl = "{$fullBaseUrl}/{$sitemapFile}";
+        if (empty($sitemapFilesCreated)) {
+            $sitemapUrl = "{$fullBaseUrl}/sitemap-1.xml";
             $currentDate = now()->toIso8601String();
-
             fwrite($indexFile, '  <sitemap>' . PHP_EOL);
             fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>" . PHP_EOL);
             fwrite($indexFile, "    <lastmod>{$currentDate}</lastmod>" . PHP_EOL);
             fwrite($indexFile, '  </sitemap>' . PHP_EOL);
+        } else {
+            foreach ($sitemapFilesCreated as $sitemapFile) {
+                $sitemapUrl = "{$fullBaseUrl}/{$sitemapFile}";
+                $currentDate = now()->toIso8601String();
+
+                fwrite($indexFile, '  <sitemap>' . PHP_EOL);
+                fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>" . PHP_EOL);
+                fwrite($indexFile, "    <lastmod>{$currentDate}</lastmod>" . PHP_EOL);
+                fwrite($indexFile, '  </sitemap>' . PHP_EOL);
+            }
         }
 
         fwrite($indexFile, '</sitemapindex>' . PHP_EOL);
