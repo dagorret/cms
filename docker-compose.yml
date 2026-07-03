@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # El backend con Laravel, Filament y SQLite
   cms-php:
@@ -18,6 +16,11 @@ services:
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'        # Limita estrictamente a 1 núcleo de CPU
+          memory: 512M       # Limita la memoria RAM a 512 Megabytes
 
   # El entorno de Node.js exclusivo para Vite, Tailwind y NPM sin mezclar dependencias
   cms-node:

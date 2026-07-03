@@ -27,7 +27,7 @@ class PostFactory extends Factory
         return [
             'title' => rtrim($title, '.'),
             'slug' => Str::slug($title),
-            'body' => "## " . $this->faker->sentence() . "\n\n" . $this->faker->paragraphs(3, true),
+            'body' => "## " . $this->faker->sentence() . "\n\n" . $this->faker->paragraphs(rand(30,60, true),
             'keywords' => implode(', ', $this->faker->words(rand(1, 3))),
             'type' => $this->faker->randomElement(['Cuaderno', 'Ensayo', 'Fuente', 'Mapa']),
             'status' => 'published',

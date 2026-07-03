@@ -3,174 +3,145 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\Models\Post;
 use App\Models\Site;
+use App\Models\Post;
+use App\Services\StaticContentCompiler;
+use App\Services\StaticSchemaGenerator;
 use Illuminate\Support\Facades\File;
 
 class SiteBuildCommand extends Command
 {
-    protected $signature = 'site:build {site_code}';
-    protected $description = 'Compila un sitio específico del CMS y genera el estático en HTML';
+    protected $signature = 'site:build {site_code} {--F|force} {--R|resource}';
+    protected $description = 'Orquestador modular tipo NASA con incrementalidad real por Base de Datos y Cursor';
 
     public function handle()
     {
         $siteCode = $this->argument('site_code');
+        $force = $this->option('force');
+        $resource = $this->option('resource');
 
-        // 1. Buscamos el sitio en la base de datos
         $site = Site::where('short_name', $siteCode)->first();
 
         if (!$site) {
-            $this->error("❌ El sitio con el código [{$siteCode}] no existe en la base de datos.");
+            $this->error("❌ El sitio [{$siteCode}] no existe.");
             return Command::FAILURE;
         }
 
-        $this->info("🚀 [Constructor] Iniciando compilación para el sitio: {$site->long_name}...");
+        $this->info("🚀 [Orquestador NASA] Iniciando para: {$site->long_name}...");
 
-        // 2. Definimos las variables de entorno del sitio
-        $baseUrl = rtrim($site->domain, '/');
-        $subdir = $site->subdir ? '/' . trim($site->subdir, '/') : '';
-        $fullBaseUrl = $baseUrl . $subdir;
-
-        // 3. Definimos la carpeta de salida 'dist' en la raíz
-        $outputFolder = base_path('dist');
-
-        // Limpiamos ejecuciones anteriores
-        if (File::exists($outputFolder)) {
-            File::deleteDirectory($outputFolder);
-        }
-        File::makeDirectory($outputFolder);
-
-        // Si tiene subdirectorio (ej: /blog), creamos esa ruta física interna
-        $targetFolder = $outputFolder . $subdir;
-        if (!empty($subdir)) {
-            File::makeDirectory($targetFolder, 0755, true, true);
+        $targetFolder = base_path('dist' . ($site->subdir ? '/' . trim($site->subdir, '/') : ''));
+        if (!File::exists($targetFolder)) {
+            File::makeDirectory($targetFolder, 0755, true);
         }
 
-        // ==========================================
-        // 4. ACTUALIZAR Y BUSCAR POSTS DEL SITIO
-        // ==========================================
-        $postsQuery = Post::where('site_id', $site->id)
-        ->orWhere('site_id', $site->short_name);
-
-        // Forzamos a que todos los 'draft' pasen a 'published' en la BD antes de compilar sin disparar eventos
-        Post::withoutEvents(function () use ($postsQuery) {
-            $postsQuery->clone()->where('status', 'draft')->update([
-                'status' => 'published'
-            ]);
-        });
-
-        // Traemos los posts ya actualizados y ordenados para el compilador
-        $posts = $postsQuery->orderBy('created_at', 'desc')->get();
-
-        if ($posts->isEmpty()) {
-            $this->warn('⚠️ No se encontraron posts asignados a este sitio para compilar.');
+        if ($force) {
+            $this->warn('🧹 Opcion --force activada. Limpiando cache anterior y forzando rebuild completo...');
+            File::cleanDirectory($targetFolder);
         }
 
-        // ==========================================
-        // 5. GENERAR LA PORTADA PAGINADA (index.html)
-        // ==========================================
-        $perPage = 10;
-        $chunks = $posts->chunk($perPage);
-        $totalPages = $chunks->count();
+        // ===================================================================
+        // 🚀 ETAPA 1: BUCLE WHILE CON FUENTE DE VERDAD EN BD + CURSOR
+        // ===================================================================
+        $compiler = new StaticContentCompiler($this, $site, $targetFolder, $force, $resource);
 
-        foreach ($chunks as $index => $chunkPosts) {
-            $currentPage = $index + 1;
-            $this->info("📝 Renderizando portada - Página {$currentPage} de {$totalPages}...");
+        // Conteo base condicional para saber el trabajo pendiente real
+        $totalEntries = Post::where(function($query) use ($site) {
+                $query->where('site_id', $site->id)
+                      ->orWhere('site_id', $site->short_name);
+            })
+            ->when(!$force, function($query) {
+                $query->where(function($q) {
+                    $q->whereNull('static_built_at')
+                      ->orWhereColumn('updated_at', '>', 'static_built_at');
+                });
+            })
+            ->count();
 
-            $indexHtml = view('site.index', [
-                'posts' => $chunkPosts,
-                'site' => $site,
-                'currentPage' => $currentPage,
-                'totalPages' => $totalPages,
-                'subdirUrl' => $site->subdir ? '/' . trim($site->subdir, '/') : ''
-            ])->render();
+        $perPage = 2000; 
+        $totalPages = ceil($totalEntries / $perPage) ?: 1;
+        
+        $this->info("📊 Registros sucios/pendientes en BD: {$totalEntries} | Bloques: {$perPage} | Páginas a procesar: " . ($totalEntries > 0 ? $totalPages : 0));
 
-            if ($currentPage === 1) {
-                File::put($targetFolder . '/index.html', $indexHtml);
-            } else {
-                $pageFolder = $targetFolder . "/page/{$currentPage}";
-                File::makeDirectory($pageFolder, 0755, true, true);
-                File::put($pageFolder . '/index.html', $indexHtml);
-            }
-        }
+        $currentPage = 0;
+        $processedCount = 0;
+        $lastId = 0;
 
-        // ==========================================
-        // 6. GENERAR CADA ENSAYO INDIVIDUAL
-        // ==========================================
-        foreach ($posts as $post) {
-            if (empty($post->slug)) {
-                continue;
+        while ($currentPage < $totalPages && $totalEntries > 0) {
+            
+            // Query ultra veloz usando la Base de Datos como Fuente de Verdad Primaria
+            $postsChunk = Post::where(function($query) use ($site) {
+                    $query->where('site_id', $site->id)
+                          ->orWhere('site_id', $site->short_name);
+                })
+                ->where('id', '>', $lastId)
+                // ⚡ Incrementalidad inteligente: si no es force, solo trae lo sucio
+                ->when(!$force, function($query) {
+                    $query->where(function($q) {
+                        $q->whereNull('static_built_at')
+                          ->orWhereColumn('updated_at', '>', 'static_built_at');
+                    });
+                })
+                ->orderBy('id', 'asc')
+                ->take($perPage)
+                ->get();
+
+            if ($postsChunk->isEmpty()) {
+                break;
             }
 
-            $this->info("📄 Compilando ensayo: {$subdir}/{$post->slug}/");
+            // Compilamos los HTMLs (ya no gasta I/O de disco preguntando fechas de archivos)
+            $compiler->compile($postsChunk);
 
-            $postFolder = $targetFolder . '/' . $post->slug;
-            File::makeDirectory($postFolder, 0755, true, true);
-
-            $postHtml = view('site.post', compact('post', 'site'))->render();
-            File::put($postFolder . '/index.html', $postHtml);
-
-            // Sello de éxito: Guardamos la fecha/hora exacta de la compilación en silencio
-            $post->updateQuietly([
+            // Actualización masiva de la marca de tiempo de compilación estática (Corregido)
+            $chunkIds = $postsChunk->pluck('id')->toArray();
+            Post::whereIn('id', $chunkIds)->update([
                 'static_built_at' => now()
             ]);
+
+            $lastId = end($chunkIds);
+            $processedCount += $postsChunk->count();
+            
+            if ($resource) {
+                $ram = round(memory_get_usage(true) / 1024 / 1024, 2);
+                $time = round(microtime(true) - LARAVEL_START, 2);
+                $this->comment("   ⏱️ [Lote Incremental] Bloque " . ($currentPage + 1) . "/{$totalPages} completo | Procesados: {$processedCount} | RAM: {$ram} MB | Tiempo: {$time}s");
+            }
+
+            unset($postsChunk, $chunkIds);
+            gc_collect_cycles();
+
+            $currentPage++;
         }
 
-        // ==========================================
-        // GENERAR SITEMAP.XML
-        // ==========================================
-        $this->info('🗺️ Generando sitemap.xml dinámico...');
+        $this->info("✔️ Fin del procesamiento de HTMLs individuales.");
 
-        $sitemapFile = fopen($targetFolder . '/sitemap.xml', 'w');
+        // ===================================================================
+        // 📦 ETAPA 2: ESTRUCTURAS GLOBALES (Se actualizan siempre rápido)
+        // ===================================================================
+        $this->info('📦 Regenerando índices globales dinámicos (JSON, Portadas, Sitemap)...');
 
-        fwrite($sitemapFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL);
-        fwrite($sitemapFile, '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
-        fwrite($sitemapFile, "    <url><loc>{$fullBaseUrl}/</loc><priority>1.0</priority></url>" . PHP_EOL);
+        $allEntriesLight = Post::where(function($query) use ($site) {
+                $query->where('site_id', $site->id)
+                      ->orWhere('site_id', $site->short_name);
+            })
+            ->select(['id', 'slug', 'title', 'type', 'category', 'keywords', 'has_math', 'created_at', 'updated_at'])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-        foreach ($posts as $post) {
-            $item = "    <url>" . PHP_EOL .
-            "        <loc>{$fullBaseUrl}/{$post->slug}/</loc>" . PHP_EOL .
-            "        <lastmod>" . $post->updated_at->toAtomString() . "</lastmod>" . PHP_EOL .
-            "        <priority>0.8</priority>" . PHP_EOL .
-            "    </url>" . PHP_EOL;
-            fwrite($sitemapFile, $item);
-        }
+        $posts = $allEntriesLight->filter(fn($entry) => ($entry->type ?? 'post') === 'post');
+        $pages = $allEntriesLight->filter(fn($entry) => ($entry->type ?? 'post') === 'page');
 
-        fwrite($sitemapFile, '</urlset>');
-        fclose($sitemapFile);
+        $generator = new StaticSchemaGenerator($this, $site, $targetFolder);
+        $generator->build($posts, $pages, $allEntriesLight);
 
-        // ==========================================
-        // GENERAR FEED.XML
-        // ==========================================
-        $this->info('📡 Generando feed.xml (RSS) dinámico...');
-
-        $feedFile = fopen($targetFolder . '/feed.xml', 'w');
-
-        fwrite($feedFile, '<?xml version="1.0" encoding="utf-8"?>' . PHP_EOL);
-        fwrite($feedFile, '<feed xmlns="http://www.w3.org/2005/Atom">' . PHP_EOL);
-        fwrite($feedFile, "    <title><![CDATA[{$site->long_name}]]></title>" . PHP_EOL);
-        fwrite($feedFile, "    <subtitle><![CDATA[{$site->slogan}]]></subtitle>" . PHP_EOL);
-        fwrite($feedFile, "    <link href=\"{$fullBaseUrl}/feed.xml\" rel=\"self\"/>" . PHP_EOL);
-        fwrite($feedFile, "    <link href=\"{$fullBaseUrl}/\"/>" . PHP_EOL);
-        fwrite($feedFile, "    <updated>" . (now()->toAtomString()) . "</updated>" . PHP_EOL);
-        fwrite($feedFile, "    <id>{$fullBaseUrl}/</id>" . PHP_EOL);
-
-        foreach ($posts as $post) {
-            $entry = "    <entry>" . PHP_EOL .
-            "        <title><![CDATA[{$post->title}]]></title>" . PHP_EOL .
-            "        <link href=\"{$fullBaseUrl}/{$post->slug}/\"/>" . PHP_EOL .
-            "        <id>{$fullBaseUrl}/{$post->slug}/</id>" . PHP_EOL .
-            "        <updated>" . $post->updated_at->toAtomString() . "</updated>" . PHP_EOL .
-            "        <summary><![CDATA[{$post->keywords}]]></summary>" . PHP_EOL .
-            "    </entry>" . PHP_EOL;
-            fwrite($feedFile, $entry);
-        }
-
-        fwrite($feedFile, '</feed>');
-        fclose($feedFile);
-
-        $this->info("✨ [Éxito] ¡Sitio [{$siteCode}] generado por completo en /dist!");
-        $this->info('Memoria pico: ' . round(memory_get_peak_usage(true) / 1024 / 1024, 2) . ' MB');
+        // Reporte Final de Cierre
+        $executionTime = round(microtime(true) - LARAVEL_START, 2);
+        $peakMemory = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        $this->newLine();
+        $this->info("📊 --- REPORTE DE RENDIMIENTO ULTRA (NASA MODE) ---");
+        $this->info("⏱️  Tiempo total de ejecución: {$executionTime} segundos");
+        $this->info("🧠 Pico máximo de memoria RAM: {$peakMemory} MB / 512 MB");
+        $this->info("-------------------------------------------------------");
 
         return Command::SUCCESS;
     }
