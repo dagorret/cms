@@ -43,6 +43,8 @@ class StaticContentCompiler
                 'subdirUrl' => $subdir,
             ])->render();
 
+            $html = StaticHtmlCleaner::clean($html);
+
             File::put($htmlFile, $html);
         }
     }

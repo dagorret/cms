@@ -7,8 +7,8 @@ use App\Models\Site;
 use App\Models\Post;
 use App\Services\StaticContentCompiler;
 use App\Services\StaticSchemaGenerator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 
 class SiteBuildCommand extends Command
 {
@@ -135,22 +135,30 @@ class SiteBuildCommand extends Command
         // ===================================================================
         $this->info('📦 Regenerando índices globales dinámicos (JSON, Portadas, Sitemap)...');
 
+        $lightColumns = [
+            'id',
+            'slug',
+            'title',
+            'type',
+            'keywords',
+            'created_at',
+            'updated_at',
+        ];
+
+        if (Schema::hasColumn('posts', 'category')) {
+            $lightColumns[] = 'category';
+        }
+
+        if (Schema::hasColumn('posts', 'has_math')) {
+            $lightColumns[] = 'has_math';
+        }
+
         $allEntriesLight = Post::where(function($query) use ($site) {
                 $query->where('site_id', $site->id)
                       ->orWhere('site_id', $site->short_name);
             })
-            ->select([
-                'id',
-                'slug',
-                'title',
-                'type',
-                'category',
-                'keywords',
-                'has_math',
-                'created_at',
-                'updated_at',
-                DB::raw('substr(body, 1, 700) as excerpt'),
-            ])
+            ->select($lightColumns)
+            ->selectRaw('substr(body, 1, 700) as excerpt')
             ->orderBy('created_at', 'desc')
             ->get();
 

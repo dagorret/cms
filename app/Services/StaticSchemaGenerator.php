@@ -53,7 +53,7 @@ class StaticSchemaGenerator
             ->groupBy(fn($e) => $e->created_at->format('Y'))
             ->sortKeysDesc();
 
-        File::put($archiveRoot . '/index.html', view('site.archive.index', [
+        $this->putHtml($archiveRoot . '/index.html', view('site.archive.index', [
             'years' => $groupedArchive->keys()->values(),
             'site' => $this->site,
             'subdir' => $subdir,
@@ -68,7 +68,7 @@ class StaticSchemaGenerator
                 ->groupBy(fn($e) => $e->created_at->format('m'))
                 ->sortKeysDesc();
 
-            File::put($yearPath . '/index.html', view('site.archive.year', [
+            $this->putHtml($yearPath . '/index.html', view('site.archive.year', [
                 'year' => $year,
                 'months' => $groupedMonths->keys()->values(),
                 'site' => $this->site,
@@ -84,7 +84,7 @@ class StaticSchemaGenerator
                     ->groupBy(fn($e) => $e->created_at->format('d'))
                     ->sortKeysDesc();
 
-                File::put($monthPath . '/index.html', view('site.archive.month', [
+                $this->putHtml($monthPath . '/index.html', view('site.archive.month', [
                     'year' => $year,
                     'month' => $month,
                     'days' => $groupedDays->map(fn($entries) => $entries->count()),
@@ -98,7 +98,7 @@ class StaticSchemaGenerator
                     $dayPath = "{$monthPath}/{$day}";
                     File::makeDirectory($dayPath, 0755, true);
 
-                    File::put($dayPath . '/index.html', view('site.archive.day', [
+                    $this->putHtml($dayPath . '/index.html', view('site.archive.day', [
                         'year' => $year,
                         'month' => $month,
                         'day' => $day,
@@ -116,29 +116,101 @@ class StaticSchemaGenerator
         $homeFirstPagePosts = max((int) config('static_cms.home_first_page_posts', 10), 1);
         $postsPerPage = max((int) config('static_cms.posts_per_home_page', 20), 1);
         $maxHomePages = max((int) config('static_cms.max_home_pages', 20), 1);
-        $groupedByCategory = $allEntriesLight->groupBy(fn($e) => $e->category ?: $e->type);
+        $dataRoot = $this->targetFolder . '/data';
+        $tagsDataRoot = $dataRoot . '/tags';
+        $allPostsForData = $allEntriesLight
+            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug))
+            ->values();
+        $groupedByCategory = $allPostsForData->groupBy(fn($e) => $e->type ?? 'post');
+        $serializePost = fn($e) => [
+            'id' => $e->id,
+            'title' => $e->title,
+            'slug' => $e->slug,
+            'url' => "{$subdir}/{$e->slug}/",
+            'type' => $e->type ?? 'post',
+            'category' => $e->category ?? null,
+            'keywords' => $e->keywords,
+            'excerpt' => trim(strip_tags($e->excerpt ?? '')),
+            'date' => $e->created_at->format('Y-m-d'),
+        ];
+
+        if (File::exists($dataRoot)) {
+            File::deleteDirectory($dataRoot);
+        }
+
+        File::makeDirectory($tagsDataRoot, 0755, true);
+
+        $typeLabels = collect(config('static_cms.types', []));
+        $menuItems = $typeLabels
+            ->map(function ($label, $type) use ($groupedByCategory, $postsPerPage) {
+                $entries = $groupedByCategory->get($type, collect());
+
+                if ($entries->isEmpty()) {
+                    return null;
+                }
+
+                $slug = str($type)->slug()->toString();
+
+                return [
+                    'title' => $label,
+                    'name' => $label,
+                    'slug' => $slug,
+                    'tag' => $slug,
+                    'count' => $entries->count(),
+                    'total_pages' => (int) ceil($entries->count() / $postsPerPage),
+                ];
+            })
+            ->filter()
+            ->values();
+
+        $extraMenuItems = $groupedByCategory
+            ->reject(fn($entries, $type) => $typeLabels->has($type))
+            ->filter(fn($entries, $type) => !empty($type) && $entries->isNotEmpty())
+            ->map(function ($entries, $type) use ($postsPerPage) {
+                $slug = str($type)->slug()->toString();
+
+                return [
+                    'title' => ucfirst($type),
+                    'name' => ucfirst($type),
+                    'slug' => $slug,
+                    'tag' => $slug,
+                    'count' => $entries->count(),
+                    'total_pages' => (int) ceil($entries->count() / $postsPerPage),
+                ];
+            })
+            ->values();
+
+        $menuItems = $menuItems->concat($extraMenuItems)->values();
 
         foreach ($groupedByCategory as $categoryName => $catEntries) {
             if (empty($categoryName)) continue;
 
             $catSlug = str($categoryName)->slug()->toString();
             $catFolder = $this->targetFolder . "/category/{$catSlug}";
+            $tagDataFolder = "{$tagsDataRoot}/{$catSlug}";
 
             if (!File::exists($catFolder)) {
                 File::makeDirectory($catFolder, 0755, true);
             }
 
+            File::makeDirectory($tagDataFolder, 0755, true);
+
             $catChunks = $catEntries->chunk($postsPerPage);
+            $catTotalPages = $catChunks->count();
+
             foreach ($catChunks as $index => $chunk) {
                 $pageNum = $index + 1;
-                $chunkData = $chunk->map(fn($e) => [
-                    'id' => $e->id,
-                    'title' => $e->title,
-                    'slug' => $e->slug,
-                    'date' => $e->created_at->format('Y-m-d')
-                ])->values()->toJson();
+                $postsPayload = $chunk->map($serializePost)->values();
+                $chunkData = $postsPayload->toJson();
+                $tagPayload = [
+                    'tag' => $catSlug,
+                    'current_page' => $pageNum,
+                    'total_pages' => $catTotalPages,
+                    'posts' => $postsPayload,
+                ];
 
                 File::put($catFolder . "/page-{$pageNum}.json", $chunkData);
+                File::put($tagDataFolder . "/page-{$pageNum}.json", json_encode($tagPayload));
             }
         }
 
@@ -151,11 +223,15 @@ class StaticSchemaGenerator
         // 2. GENERAR MENÚ ESTÁTICO HTML Y JSON MAESTRO
         // ===================================================================
         $this->command->comment('   🍴 Generando menús de navegación estáticos...');
-        $menuHtml = view('site.menu', ['pages' => $pages, 'site' => $this->site])->render();
-        File::put($this->targetFolder . '/menu.html', $menuHtml);
+        $menuHtml = view('site.menu', [
+            'items' => $menuItems,
+            'pages' => $pages,
+            'site' => $this->site,
+            'subdirUrl' => $subdir,
+        ])->render();
+        $this->putHtml($this->targetFolder . '/menu.html', $menuHtml);
 
-        $menuJson = $pages->map(fn($p) => ['title' => $p->title, 'slug' => $p->slug])->values()->toJson();
-        File::put($this->targetFolder . '/menu.json', $menuJson);
+        File::put($this->targetFolder . '/menu.json', $menuItems->toJson(JSON_PRETTY_PRINT));
 
         // ===================================================================
         // 3. 📄 PORTADA PRINCIPAL (HTML) Y PAGINACIÓN SUBSIGUIENTE (JSON PURO)
@@ -187,6 +263,14 @@ class StaticSchemaGenerator
 
         foreach ($pagesToRender as $index => $chunkPosts) {
             $currentPage = $index + 1;
+            $postsPayload = $chunkPosts->map($serializePost)->values();
+            $pagePayload = [
+                'current_page' => $currentPage,
+                'total_pages' => $totalPages,
+                'posts' => $postsPayload,
+            ];
+
+            File::put($dataRoot . "/page-{$currentPage}.json", json_encode($pagePayload));
 
             if ($currentPage === 1) {
                 // La página 1 de la Home siempre es un HTML real masticado para el landing inicial
@@ -198,21 +282,10 @@ class StaticSchemaGenerator
                     'subdirUrl' => $subdir
                 ])->render();
 
-                File::put($this->targetFolder . '/index.html', $indexHtml);
+                $this->putHtml($this->targetFolder . '/index.html', $indexHtml);
             } else {
                 // 🚀 De la página 2 en adelante: JSON puros en la raíz de dist para consumo SPA instantáneo
-                $pageJsonData = $chunkPosts->map(fn($e) => [
-                    'id' => $e->id,
-                    'title' => $e->title,
-                    'slug' => $e->slug,
-                    'type' => $e->type ?? 'post',
-                    'category' => $e->category,
-                    'keywords' => $e->keywords,
-                    'excerpt' => trim(strip_tags($e->excerpt ?? '')),
-                    'date' => $e->created_at->format('Y-m-d')
-                ])->values()->toJson();
-
-                File::put($this->targetFolder . "/page-{$currentPage}.json", $pageJsonData);
+                File::put($this->targetFolder . "/page-{$currentPage}.json", $postsPayload->toJson());
             }
         }
 
@@ -333,7 +406,7 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   🚧 Generando 404.html estático con rutas absolutas...');
 
-        File::put($this->targetFolder . '/404.html', view('site.404', [
+        $this->putHtml($this->targetFolder . '/404.html', view('site.404', [
             'site' => $this->site,
             'subdir' => $subdir,
             'subdirUrl' => $fullBaseUrl,
@@ -342,5 +415,10 @@ class StaticSchemaGenerator
         ])->render());
 
         $this->command->info('   ✔️ Arquitectura unificada: SPA JSON Ready, Sitemaps indexados y 404 estático listos.');
+    }
+
+    protected function putHtml(string $path, string $html): void
+    {
+        File::put($path, StaticHtmlCleaner::clean($html));
     }
 }

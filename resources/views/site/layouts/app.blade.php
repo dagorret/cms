@@ -101,6 +101,16 @@
             line-height: 1.12;
             letter-spacing: -.03em;
         }
+        .feed-item {
+            padding: 2.25rem 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .feed-item h2 {
+            margin: .65rem 0 .85rem;
+            font-size: clamp(1.875rem, 4vw, 2.25rem);
+            line-height: 1.04;
+            letter-spacing: -.045em;
+        }
         .archive-item {
             padding: 18px 0;
             border-bottom: 1px solid var(--line);
@@ -209,16 +219,16 @@
         </div>
 
         <div class="mx-auto mt-[14px] flex max-w-[1180px] items-center justify-between gap-6 max-[900px]:items-start max-[900px]:gap-4">
-            <nav class="main-nav flex flex-wrap gap-[18px] font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] [&_a:hover]:text-[#0f4c5c]">
+            <nav id="spa-menu" class="main-nav flex flex-wrap gap-[18px] font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] [&_a:hover]:text-[#0f4c5c]">
                 @if($generatedMenu !== '')
                     {!! $generatedMenu !!}
                 @else
-                    <a href="{{ $subdirUrl }}/ensayos/">Ensayos</a>
-                    <a href="{{ $subdirUrl }}/infraestructura/">Infraestructura</a>
-                    <a href="{{ $subdirUrl }}/cuadernos/">Cuadernos</a>
-                    <a href="{{ $subdirUrl }}/conversaciones/">Conversaciones</a>
-                    <a href="{{ $subdirUrl }}/mapas/">Mapas</a>
-                    <a href="{{ $subdirUrl }}/fuentes/">Fuentes</a>
+                    <a href="{{ $subdirUrl ?: '/' }}/" data-tag="">Inicio</a>
+                    <a href="{{ $subdirUrl }}/?tag=essay" data-tag="essay">Ensayos</a>
+                    <a href="{{ $subdirUrl }}/?tag=notebook" data-tag="notebook">Cuadernos</a>
+                    <a href="{{ $subdirUrl }}/?tag=conversation" data-tag="conversation">Conversaciones</a>
+                    <a href="{{ $subdirUrl }}/?tag=map" data-tag="map">Mapas</a>
+                    <a href="{{ $subdirUrl }}/?tag=source" data-tag="source">Fuentes</a>
                     <a href="{{ $subdirUrl }}/sobre/">Sobre</a>
                 @endif
             </nav>
