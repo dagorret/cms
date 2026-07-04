@@ -29,7 +29,6 @@ a:hover { text-decoration: underline; }
 .page-btn:hover { background: #24283c; }
 .page-btn.active { background: #7aa2f7; color: #1a1b26; font-weight: bold; cursor: default; }
 .page-btn:disabled { color: var(--meta-color); cursor: not-allowed; background: transparent; }
-.page-ellipsis { padding: 0 4px; color: var(--meta-color); user-select: none; }
 </style>
 </head>
 <body>
@@ -50,7 +49,11 @@ a:hover { text-decoration: underline; }
 @endforeach
 </div>
 
-<nav class="pagination"></nav>
+{{-- Botonera de paginación controlada --}}
+<nav class="pagination" id="pagination-nav"></nav>
+
+{{-- Inclusión modular del Footer según Punto 4 del Manifiesto --}}
+@include('site.partials.footer')
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -63,56 +66,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateControls() {
         let html = '';
+        const maxItems = 7;
+        let pages = [];
 
-// Flecha anterior
-const prevDisabled = (currentPage === 1) ? 'disabled' : '';
-html += `<button class="page-btn prev-btn" ${prevDisabled}>⬅️</button>`;
+        const prevDisabled = currentPage === 1 ? 'disabled' : '';
+        html += `<button class="page-btn prev-btn" ${prevDisabled}>⬅️</button>`;
 
-if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) {
-        const activeClass = (i === currentPage) ? 'active' : '';
-const disabledAttr = (i === currentPage) ? 'disabled' : '';
-html += `<button class="page-btn num-btn ${activeClass}" data-page="${i}" ${disabledAttr}>${i}</button>`;
-    }
-} else if (currentPage <= 4) {
-    for (let i = 1; i <= 5; i++) {
-        const activeClass = (i === currentPage) ? 'active' : '';
-const disabledAttr = (i === currentPage) ? 'disabled' : '';
-html += `<button class="page-btn num-btn ${activeClass}" data-page="${i}" ${disabledAttr}>${i}</button>`;
-    }
-    html += `<span class="page-ellipsis">...</span>`;
-    html += `<button class="page-btn num-btn" data-page="${totalPages}">${totalPages}</button>`;
-} else if (currentPage >= totalPages - 3) {
-    html += `<button class="page-btn num-btn" data-page="1">1</button>`;
-    html += `<span class="page-ellipsis">...</span>`;
-    for (let i = totalPages - 4; i <= totalPages; i++) {
-        const activeClass = (i === currentPage) ? 'active' : '';
-const disabledAttr = (i === currentPage) ? 'disabled' : '';
-html += `<button class="page-btn num-btn ${activeClass}" data-page="${i}" ${disabledAttr}>${i}</button>`;
-    }
-} else {
-    html += `<button class="page-btn num-btn" data-page="1">1</button>`;
-    html += `<span class="page-ellipsis">...</span>`;
-    for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-        const activeClass = (i === currentPage) ? 'active' : '';
-const disabledAttr = (i === currentPage) ? 'disabled' : '';
-html += `<button class="page-btn num-btn ${activeClass}" data-page="${i}" ${disabledAttr}>${i}</button>`;
-    }
-    html += `<span class="page-ellipsis">...</span>`;
-    html += `<button class="page-btn num-btn" data-page="${totalPages}">${totalPages}</button>`;
-}
+        if (totalPages <= maxItems) {
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i);
+            }
+        } else if (currentPage <= 4) {
+            pages = [1, 2, 3, 4, 5, { label: '...', page: 6 }, totalPages];
+        } else if (currentPage >= totalPages - 3) {
+            pages = [1, { label: '...', page: totalPages - 5 }, totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+        } else {
+            pages = [
+                1,
+                { label: '...', page: currentPage - 2 },
+                currentPage - 1,
+                currentPage,
+                currentPage + 1,
+                { label: '...', page: currentPage + 2 },
+                totalPages
+            ];
+        }
 
-// Flecha siguiente
-const nextDisabled = (currentPage === totalPages) ? 'disabled' : '';
-html += `<button class="page-btn next-btn" ${nextDisabled}>➡️</button>`;
+        pages.forEach(item => {
+            if (typeof item === 'number') {
+                const activeClass = item === currentPage ? 'active' : '';
+                const disabledAttr = item === currentPage ? 'disabled' : '';
+                html += `<button class="page-btn num-btn ${activeClass}" data-page="${item}" ${disabledAttr}>${item}</button>`;
+                return;
+            }
 
-paginationNav.innerHTML = html;
+            html += `<button class="page-btn num-btn" data-page="${item.page}">${item.label}</button>`;
+        });
 
-paginationNav.querySelectorAll('.num-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigateToPage(parseInt(btn.dataset.page)));
-});
-paginationNav.querySelector('.prev-btn').addEventListener('click', () => navigateToPage(currentPage - 1));
-paginationNav.querySelector('.next-btn').addEventListener('click', () => navigateToPage(currentPage + 1));
+        const nextDisabled = currentPage >= totalPages ? 'disabled' : '';
+        html += `<button class="page-btn next-btn" ${nextDisabled}>➡️</button>`;
+
+        paginationNav.innerHTML = html;
+
+        paginationNav.querySelectorAll('.num-btn').forEach(btn => {
+            btn.addEventListener('click', () => navigateToPage(parseInt(btn.dataset.page)));
+        });
+
+        paginationNav.querySelector('.prev-btn').addEventListener('click', () => navigateToPage(currentPage - 1));
+        paginationNav.querySelector('.next-btn').addEventListener('click', () => navigateToPage(currentPage + 1));
     }
 
     async function navigateToPage(page) {

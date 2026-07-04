@@ -20,8 +20,9 @@ return [
     'build_chunk_size' => env('STATIC_BUILD_CHUNK', 2000), 
 
     // 📄 Límites de la Portada HTML (Etapa 2)
-    'max_home_pages' => env('STATIC_MAX_HOME_PAGES', 20),  
-    'posts_per_home_page' => env('STATIC_HOME_PER_PAGE', 10), 
+    'home_first_page_posts' => env('STATIC_HOME_FIRST_PAGE_POSTS', 10),
+    'max_home_pages' => env('STATIC_MAX_HOME_PAGES', 20),
+    'posts_per_home_page' => env('STATIC_HOME_PER_PAGE', 20),
 
     // 📡 Límites de Feeds y Sitemaps Masivos
     'max_feed_items' => env('STATIC_MAX_FEED_ITEMS', 50), 

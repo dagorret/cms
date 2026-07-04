@@ -37,28 +37,85 @@ class StaticSchemaGenerator
 
         File::put($this->targetFolder . '/categories.json', $categoriesList->toJson(JSON_PRETTY_PRINT));
 
-        // B) Segmentación Cronológica pura: /archive/{YYYY}/{MM}/index.json
-        $groupedByMonth = $allEntriesLight->groupBy(fn($e) => $e->created_at->format('Y/m'));
+        // B) Archivo Histórico Estático: /archive/{YYYY}/{MM}/{DD}/index.html
+        $archiveRoot = $this->targetFolder . '/archive';
+        $archivePosts = $allEntriesLight
+            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug) && $e->created_at)
+            ->values();
 
-        foreach ($groupedByMonth as $yearMonth => $entries) {
-            $archivePath = $this->targetFolder . "/archive/{$yearMonth}";
-            if (!File::exists($archivePath)) {
-                File::makeDirectory($archivePath, 0755, true);
+        if (File::exists($archiveRoot)) {
+            File::deleteDirectory($archiveRoot);
+        }
+
+        File::makeDirectory($archiveRoot, 0755, true);
+
+        $groupedArchive = $archivePosts
+            ->groupBy(fn($e) => $e->created_at->format('Y'))
+            ->sortKeysDesc();
+
+        File::put($archiveRoot . '/index.html', view('site.archive.index', [
+            'years' => $groupedArchive->keys()->values(),
+            'site' => $this->site,
+            'subdir' => $subdir,
+            'subdirUrl' => $subdir,
+        ])->render());
+
+        foreach ($groupedArchive as $year => $yearEntries) {
+            $yearPath = "{$archiveRoot}/{$year}";
+            File::makeDirectory($yearPath, 0755, true);
+
+            $groupedMonths = $yearEntries
+                ->groupBy(fn($e) => $e->created_at->format('m'))
+                ->sortKeysDesc();
+
+            File::put($yearPath . '/index.html', view('site.archive.year', [
+                'year' => $year,
+                'months' => $groupedMonths->keys()->values(),
+                'site' => $this->site,
+                'subdir' => $subdir,
+                'subdirUrl' => $subdir,
+            ])->render());
+
+            foreach ($groupedMonths as $month => $monthEntries) {
+                $monthPath = "{$yearPath}/{$month}";
+                File::makeDirectory($monthPath, 0755, true);
+
+                $groupedDays = $monthEntries
+                    ->groupBy(fn($e) => $e->created_at->format('d'))
+                    ->sortKeysDesc();
+
+                File::put($monthPath . '/index.html', view('site.archive.month', [
+                    'year' => $year,
+                    'month' => $month,
+                    'days' => $groupedDays->map(fn($entries) => $entries->count()),
+                    'site' => $this->site,
+                    'subdir' => $subdir,
+                    'subdirUrl' => $subdir,
+                ])->render());
+
+                foreach ($groupedDays as $day => $dayEntries) {
+                    $dayPosts = $dayEntries->values();
+                    $dayPath = "{$monthPath}/{$day}";
+                    File::makeDirectory($dayPath, 0755, true);
+
+                    File::put($dayPath . '/index.html', view('site.archive.day', [
+                        'year' => $year,
+                        'month' => $month,
+                        'day' => $day,
+                        'posts' => $dayPosts,
+                        'totalPosts' => $dayPosts->count(),
+                        'site' => $this->site,
+                        'subdir' => $subdir,
+                        'subdirUrl' => $subdir,
+                    ])->render());
+                }
             }
-
-            $archiveData = $entries->map(fn($e) => [
-                'id' => $e->id,
-                'title' => $e->title,
-                'slug' => $e->slug,
-                'type' => $e->type ?? 'post',
-                'date' => $e->created_at->format('Y-m-d')
-            ])->values()->toJson();
-
-            File::put($archivePath . '/index.json', $archiveData);
         }
 
         // C) Índices dinámicos de Categorías paginados en JSON puro: /category/{slug}/page-{n}.json
-        $postsPerPage = config('static_cms.posts_per_home_page', 10);
+        $homeFirstPagePosts = max((int) config('static_cms.home_first_page_posts', 10), 1);
+        $postsPerPage = max((int) config('static_cms.posts_per_home_page', 20), 1);
+        $maxHomePages = max((int) config('static_cms.max_home_pages', 20), 1);
         $groupedByCategory = $allEntriesLight->groupBy(fn($e) => $e->category ?: $e->type);
 
         foreach ($groupedByCategory as $categoryName => $catEntries) {
@@ -106,16 +163,26 @@ class StaticSchemaGenerator
         $this->command->comment('   📄 Generando Portada index.html y listados JSON para la SPA...');
 
         // El universo completo de posts ordenados para la portada
-        $allPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page');
-        $chunks = $allPosts->chunk($postsPerPage);
+        $allPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page')->values();
+        $firstPagePosts = $allPosts->take($homeFirstPagePosts);
+        $paginatedPosts = $allPosts
+            ->slice($homeFirstPagePosts)
+            ->chunk($postsPerPage)
+            ->take($maxHomePages - 1);
 
-        // 🔥 FIX ARQUITECTURA: Renderizamos TODAS las páginas reales
-        $pagesToRender = $chunks;
-        $totalPages = $chunks->count();
+        // Página 1 liviana: 10 posts. Páginas siguientes: 20 posts, hasta el límite reciente.
+        $pagesToRender = $firstPagePosts->isEmpty()
+            ? collect()
+            : collect([$firstPagePosts])->concat($paginatedPosts)->values();
+        $totalPages = $pagesToRender->count();
 
         // Si existía la estructura vieja de carpetas HTML para las páginas, la limpiamos
         if (File::exists($this->targetFolder . '/page')) {
             File::deleteDirectory($this->targetFolder . '/page');
+        }
+
+        foreach (File::glob($this->targetFolder . '/page-*.json') ?: [] as $stalePageFile) {
+            File::delete($stalePageFile);
         }
 
         foreach ($pagesToRender as $index => $chunkPosts) {
