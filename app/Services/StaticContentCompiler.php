@@ -18,6 +18,8 @@ class StaticContentCompiler
 
     public function compile($entries)
     {
+        $subdir = $this->site->subdir ? '/' . trim($this->site->subdir, '/') : '';
+
         foreach ($entries as $entry) {
             if (empty($entry->slug)) continue;
 
@@ -30,8 +32,17 @@ class StaticContentCompiler
                 File::makeDirectory($entryFolder, 0755, true);
             }
 
-            $viewName = ($entry->type ?? 'post') === 'page' ? 'site.page' : 'site.post';
-            $html = view($viewName, ['post' => $entry, 'site' => $this->site])->render();
+            $viewName = ($entry->type ?? 'post') === 'page' && view()->exists('site.page')
+                ? 'site.page'
+                : 'site.posts.show';
+
+            $html = view($viewName, [
+                'post' => $entry,
+                'site' => $this->site,
+                'subdir' => $subdir,
+                'subdirUrl' => $subdir,
+            ])->render();
+
             File::put($htmlFile, $html);
         }
     }

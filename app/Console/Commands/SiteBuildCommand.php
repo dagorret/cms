@@ -82,6 +82,20 @@ class SiteBuildCommand extends Command
                     });
                 })
                 ->orderBy('id', 'asc')
+                ->select([
+                    'id',
+                    'site_id',
+                    'slug',
+                    'title',
+                    'body',
+                    'keywords',
+                    'type',
+                    'status',
+                    'published_at',
+                    'created_at',
+                    'updated_at',
+                    'static_built_at',
+                ])
                 ->take($perPage)
                 ->get();
 
