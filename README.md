@@ -137,12 +137,55 @@ docker-compose up -d --build
 **2. Instalar dependencias e inicializar variables**
 
 ```bash
-docker-compose exec app composer install
-docker-compose exec app npm install && npm run build
-docker-compose exec app cp .env.example .env
-docker-compose exec app php artisan key:generate
+# 1. CONSTRUIR LAS IMÁGENES (Paso inicial obligatorio)
+# Esto lee tus Dockerfiles y crea las imágenes locales locales.
+docker-compose build
+
+# 2. Instalar dependencias (Usando contenedores temporales)
+docker-compose run --rm cms-php composer install
+docker-compose run --rm cms-node npm install
+
+# 3. Levantar los contenedores en segundo plano
+docker-compose up -d
+
+# 4. Configurar Laravel (En el contenedor de PHP)
+docker-compose exec cms-php cp .env.example .env
+docker-compose exec cms-php php artisan key:generate
+
+# 5. Dejar corriendo Vite en desarrollo
+docker-compose exec cms-node npm run dev
 ```
 
+Para producción:
+
+```bash
+# 1. CONSTRUIR LAS IMÁGENES
+docker-compose build
+
+# 2. Instalar dependencias de PHP OPTIMIZADAS para producción
+# (--no-dev quita herramientas de testing/debug, --optimize-autoloader acelera Laravel)
+docker-compose run --rm cms-php composer install --no-dev --optimize-autoloader
+
+# 3. Instalar dependencias de Node y COMPILAR para producción
+# (Aquí hacemos el build y generamos los archivos listos para el navegador)
+docker-compose run --rm cms-node npm install
+docker-compose run --rm cms-node npm run build
+
+# --- NOTA EN ESTE PUNTO ---
+# Antes del siguiente paso, DEBES crear tu archivo `.env` real en el servidor
+# con tus credenciales de producción, APP_ENV=production y APP_DEBUG=false.
+
+# 4. Levantar los contenedores en segundo plano (Solo se queda corriendo PHP)
+docker-compose up -d cms-php
+
+# 5. Optimizar Laravel para producción (Cachear rutas, configuración y vistas)
+docker-compose exec cms-php php artisan config:cache
+docker-compose exec cms-php php artisan route:cache
+docker-compose exec cms-php php artisan view:cache
+
+# 6. Correr migraciones de la base de datos de forma segura
+docker-compose exec cms-php php artisan migrate --force
+```
 **3. Ejecutar la compilación del sitio estático**
 
 ```bash
