@@ -3,22 +3,19 @@
 @section('title', 'Publicaciones del ' . $day . '/' . $month . '/' . $year)
 
 @section('content')
-    <section class="mx-auto max-w-3xl px-6 py-12">
-        <header class="mb-10 border-b border-slate-800/80 pb-6">
-            <p class="mb-2 text-sm font-medium uppercase tracking-wide text-sky-400">Archivo diario</p>
-            <h1 class="text-3xl font-bold text-slate-100 mb-6">Publicaciones del {{ $day }}/{{ $month }}/{{ $year }}</h1>
-            <p class="text-base leading-7 text-slate-400">{{ $totalPosts }} publicaciones registradas en esta fecha.</p>
+    <section class="article-list">
+        <header class="mb-8">
+            <p class="kicker">Archivo diario</p>
+            <h1 class="my-4 font-serif text-[clamp(2rem,4vw,3.2rem)] font-bold leading-[1.02] tracking-[-.045em] text-[#171717]">Publicaciones del {{ $day }}/{{ $month }}/{{ $year }}</h1>
+            <p class="text-[1.05rem] leading-[1.68] text-[#333333]">{{ $totalPosts }} publicaciones registradas en esta fecha.</p>
         </header>
 
-        <ol class="overflow-hidden border-t border-slate-800/60">
+        <ol>
             @foreach($posts as $post)
-                <li class="border-b border-slate-800/60">
-                    <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="flex items-center justify-between gap-6 px-4 py-5 text-slate-200 transition-colors hover:bg-slate-800/50 hover:text-sky-300">
-                        <span class="text-xl font-semibold">{{ $post->title }}</span>
-                        <span class="flex items-center gap-2 text-sm text-slate-400">
-                            <span>📅</span>
-                            <time datetime="{{ $post->created_at->format('Y-m-d') }}">{{ $post->created_at->format('d/m/Y') }}</time>
-                        </span>
+                <li class="archive-item">
+                    <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="flex items-center justify-between gap-6 decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c]">
+                        <span class="font-serif text-[1.55rem] font-bold leading-[1.12] tracking-[-.03em]">{{ $post->title }}</span>
+                        <time datetime="{{ $post->created_at->format('Y-m-d') }}" class="meta">{{ $post->created_at->format('Y-m-d') }}</time>
                     </a>
                 </li>
             @endforeach

@@ -205,6 +205,10 @@ class StaticSchemaGenerator
                     'id' => $e->id,
                     'title' => $e->title,
                     'slug' => $e->slug,
+                    'type' => $e->type ?? 'post',
+                    'category' => $e->category,
+                    'keywords' => $e->keywords,
+                    'excerpt' => trim(strip_tags($e->excerpt ?? '')),
                     'date' => $e->created_at->format('Y-m-d')
                 ])->values()->toJson();
 

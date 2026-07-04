@@ -19,8 +19,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'        # Limita estrictamente a 1 núcleo de CPU
-          memory: 512M       # Limita la memoria RAM a 512 Megabytes
+          cpus: '4.0'        # Limita estrictamente a 1 núcleo de CPU
+          memory: 4096M       # Limita la memoria RAM a 512 Megabytes
 
   # El entorno de Node.js exclusivo para Vite, Tailwind y NPM sin mezclar dependencias
   cms-node:

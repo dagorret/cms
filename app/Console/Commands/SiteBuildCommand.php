@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\Post;
 use App\Services\StaticContentCompiler;
 use App\Services\StaticSchemaGenerator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 
 class SiteBuildCommand extends Command
@@ -138,7 +139,18 @@ class SiteBuildCommand extends Command
                 $query->where('site_id', $site->id)
                       ->orWhere('site_id', $site->short_name);
             })
-            ->select(['id', 'slug', 'title', 'type', 'category', 'keywords', 'has_math', 'created_at', 'updated_at'])
+            ->select([
+                'id',
+                'slug',
+                'title',
+                'type',
+                'category',
+                'keywords',
+                'has_math',
+                'created_at',
+                'updated_at',
+                DB::raw('substr(body, 1, 700) as excerpt'),
+            ])
             ->orderBy('created_at', 'desc')
             ->get();
 
