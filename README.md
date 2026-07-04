@@ -88,7 +88,7 @@ La ejecución completa del comando genera un único directorio autocontenido den
 ```
 dist/
 ├── assets/     # CSS, JS e imágenes optimizadas
-├── data/       # Micro-JSONs individuales para la Hydra SPA
+├── data/        # Micro-JSONs individuales para la Hydra SPA
 ├── category/   # JSONs indexados por etiquetas y taxonomías
 ├── page/       # HTMLs de la paginación secuencial (/page/2/, etc.)
 ├── index.html  # Home del sitio web
@@ -131,65 +131,71 @@ Sigue esta secuencia exacta en tu terminal local para inicializar el entorno y l
 ```bash
 git clone https://github.com/tu-usuario/cms-faro.git
 cd cms-faro
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 **2. Instalar dependencias e inicializar variables**
 
+### Entorno de Desarrollo (Local)
+
 ```bash
 # 1. CONSTRUIR LAS IMÁGENES (Paso inicial obligatorio)
-# Esto lee tus Dockerfiles y crea las imágenes locales locales.
-docker-compose build
+# Esto lee tus Dockerfiles optimizados y crea el entorno aislado.
+docker compose build
 
-# 2. Instalar dependencias (Usando contenedores temporales)
-docker-compose run --rm cms-php composer install
-docker-compose run --rm cms-node npm install
+# 2. Copiar variables de entorno locales (¡Antes de levantar nada!)
+cp .env.example .env
 
-# 3. Levantar los contenedores en segundo plano
-docker-compose up -d
+# 3. Instalar dependencias iniciales (Usando contenedores temporales)
+docker compose run --rm cms-php composer install
+docker compose run --rm cms-node npm install
 
-# 4. Configurar Laravel (En el contenedor de PHP)
-docker-compose exec cms-php cp .env.example .env
-docker-compose exec cms-php php artisan key:generate
+# 4. Levantar los contenedores en segundo plano (Modo demonio)
+docker compose up -d
 
-# 5. Dejar corriendo Vite en desarrollo
-docker-compose exec cms-node npm run dev
+# 5. Generar la clave única de Laravel (En el contenedor de PHP)
+docker compose exec cms-php php artisan key:generate
+
+# 6. Lanzar todo y dejar Vite corriendo en desarrollo (Verás el output en tiempo real)
+docker compose down && docker compose up
 ```
 
-Para producción:
+### Entorno de Producción
 
 ```bash
 # 1. CONSTRUIR LAS IMÁGENES
-docker-compose build
+docker compose build
 
 # 2. Instalar dependencias de PHP OPTIMIZADAS para producción
-# (--no-dev quita herramientas de testing/debug, --optimize-autoloader acelera Laravel)
-docker-compose run --rm cms-php composer install --no-dev --optimize-autoloader
+# (--no-dev quita herramientas de desarrollo y acelera el autoloader)
+docker compose run --rm cms-php composer install --no-dev --optimize-autoloader
 
-# 3. Instalar dependencias de Node y COMPILAR para producción
-# (Aquí hacemos el build y generamos los archivos listos para el navegador)
-docker-compose run --rm cms-node npm install
-docker-compose run --rm cms-node npm run build
+# 3. Instalar dependencias de Node y COMPILAR assets estáticos
+# (Genera los archivos minificados y listos para el navegador)
+docker compose run --rm cms-node npm install
+docker compose run --rm cms-node npm run build
 
-# --- NOTA EN ESTE PUNTO ---
-# Antes del siguiente paso, DEBES crear tu archivo `.env` real en el servidor
-# con tus credenciales de producción, APP_ENV=production y APP_DEBUG=false.
+# --- NOTA CRUCIAL ---
+# Antes del siguiente paso, DEBES configurar tu archivo `.env` definitivo
+# en el servidor con: APP_ENV=production, APP_DEBUG=false y tus contraseñas reales.
 
-# 4. Levantar los contenedores en segundo plano (Solo se queda corriendo PHP)
-docker-compose up -d cms-php
+# 4. Levantar únicamente el servidor de PHP/Laravel en segundo plano
+# (El contenedor de Node ya no es necesario porque los assets están compilados en la carpeta pública)
+docker compose up -d cms-php
 
-# 5. Optimizar Laravel para producción (Cachear rutas, configuración y vistas)
-docker-compose exec cms-php php artisan config:cache
-docker-compose exec cms-php php artisan route:cache
-docker-compose exec cms-php php artisan view:cache
+# 5. Optimizar el rendimiento de Laravel (Cachea todo en memoria)
+docker compose exec cms-php php artisan config:cache
+docker compose exec cms-php php artisan route:cache
+docker compose exec cms-php php artisan view:cache
 
-# 6. Correr migraciones de la base de datos de forma segura
-docker-compose exec cms-php php artisan migrate --force
+# 6. Correr migraciones de la base de datos de forma segura e indestructible
+docker compose exec cms-php php artisan migrate --force
 ```
+
 **3. Ejecutar la compilación del sitio estático**
 
 ```bash
-docker-compose exec app php artisan site:build
+docker compose exec cms-php php artisan site:build
 ```
 
 > **Métrica de Ejecución Estándar:** con una base cargada de 30.000 posts, la terminal completará la escritura del directorio `dist/` en 33 segundos, consumiendo un pico máximo estable de memoria RAM de apenas 124 MB, corriendo sobre PHP 8.4+ y Laravel 13.18.1.
@@ -275,4 +281,3 @@ Bajo los siguientes términos:
 - **No Comercial** — el material no puede utilizarse con fines comerciales sin autorización expresa del autor.
 
 Texto legal completo: https://creativecommons.org/licenses/by-nc/4.0/deed.es
-
