@@ -5,6 +5,10 @@ return [
     |--------------------------------------------------------------------------
     | Configuración del Motor Estático Tipo NASA
     |--------------------------------------------------------------------------
+    |
+    | Este archivo centraliza el comportamiento del pipeline de generación 
+    | estática y la interfaz de Filament.
+    |
     */
 
     // 🎨 Apariencia (Apunta a resources/views/themes/{theme_id}/)
@@ -21,11 +25,11 @@ return [
 
     // 📄 Límites de la Portada HTML (Etapa 2)
     'home_first_page_posts' => env('STATIC_HOME_FIRST_PAGE_POSTS', 10),
-    'max_home_pages' => env('STATIC_MAX_HOME_PAGES', 20),
-    'posts_per_home_page' => env('STATIC_HOME_PER_PAGE', 20),
+    'max_home_pages'        => env('STATIC_MAX_HOME_PAGES', 20),
+    'posts_per_home_page'   => env('STATIC_HOME_PER_PAGE', 20),
 
     // 📡 Límites de Feeds y Sitemaps Masivos
-    'max_feed_items' => env('STATIC_MAX_FEED_ITEMS', 50), 
+    'max_feed_items'   => env('STATIC_MAX_FEED_ITEMS', 50), 
     'sitemap_per_page' => env('STATIC_SITEMAP_PER_PAGE', 1000), 
 
     // 📝 Tipos de Contenido Disponibles en el CMS

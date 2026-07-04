@@ -17,7 +17,12 @@ export default defineConfig({
         tailwindcss(),
     ],
     server: {
+        host: '0.0.0.0',       // <--- ESTO: Le dice a Vite que escuche hacia el exterior del contenedor
+        hmr: {
+            host: 'localhost', // <--- ESTO: Le dice a tu navegador dónde buscar el Hot Reload
+        },
         watch: {
+            usePolling: true,  // <--- RECOMENDADO en Arch: fuerza a Docker a ver cambios de archivos en tiempo real
             ignored: ['**/storage/framework/views/**'],
         },
     },
