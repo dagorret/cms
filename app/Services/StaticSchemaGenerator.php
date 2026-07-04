@@ -217,24 +217,29 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   📡 Generando feed.xml...');
 
-        $maxFeedItems = config('static_cms.max_feed_items', 50);
-        $feedPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page')->take($maxFeedItems);
+        $maxFeedItems = max((int) config('static_cms.max_feed_items', 50), 1);
+        $feedPosts = $allEntriesLight
+            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug) && $e->created_at)
+            ->sortByDesc(fn($e) => $e->created_at->timestamp)
+            ->take($maxFeedItems);
 
         $feedPath = $this->targetFolder . '/feed.xml';
         $feedFile = fopen($feedPath, 'w');
+        $siteTitle = htmlspecialchars($this->site->long_name ?? $this->site->name ?? config('app.name'), ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $feedLink = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         fwrite($feedFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<rss version="2.0">' . PHP_EOL . '  <channel>' . PHP_EOL);
-        fwrite($feedFile, "    <title><![CDATA[{$this->site->long_name}]]></title>" . PHP_EOL);
-        fwrite($feedFile, "    <link>{$fullBaseUrl}/</link>" . PHP_EOL);
+        fwrite($feedFile, "    <title>{$siteTitle}</title>" . PHP_EOL);
+        fwrite($feedFile, "    <link>{$feedLink}</link>" . PHP_EOL);
 
         foreach ($feedPosts as $post) {
-            $url = "{$fullBaseUrl}/{$post->slug}/";
-            // 🛡️ CORRECCIÓN: Usamos ENT_QUOTES para escapar caracteres especiales de forma segura y estándar
-            $title = htmlspecialchars($post->title, ENT_QUOTES, 'UTF-8');
+            $url = htmlspecialchars("{$fullBaseUrl}/{$post->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
+            $title = htmlspecialchars($post->title, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
             fwrite($feedFile, '    <item>' . PHP_EOL);
             fwrite($feedFile, "      <title>{$title}</title>" . PHP_EOL);
             fwrite($feedFile, "      <link>{$url}</link>" . PHP_EOL);
+            fwrite($feedFile, "      <guid>{$url}</guid>" . PHP_EOL);
             fwrite($feedFile, "      <pubDate>" . $post->created_at->toRssString() . "</pubDate>" . PHP_EOL);
             fwrite($feedFile, '    </item>' . PHP_EOL);
         }
@@ -247,62 +252,91 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   🗺️ Generando Sitemap Index y fragmentos masivos...');
 
-        $sitemapPerPage = config('static_cms.sitemap_per_page', 5000);
-        $sitemapChunks = $allEntriesLight->chunk($sitemapPerPage);
+        $sitemapsPath = $this->targetFolder . '/sitemaps';
+        $sitemapPerPage = max((int) config('static_cms.sitemap_per_page', 1000), 1);
+        $sitemapEntries = $allEntriesLight
+            ->filter(fn($entry) => !empty($entry->slug) && $entry->updated_at)
+            ->values();
+        $sitemapChunks = $sitemapEntries->chunk($sitemapPerPage);
         $sitemapFilesCreated = [];
+
+        if (File::exists($sitemapsPath)) {
+            File::deleteDirectory($sitemapsPath);
+        }
+
+        File::makeDirectory($sitemapsPath, 0755, true);
+
+        if (File::exists($this->targetFolder . '/sitemap.xml')) {
+            File::delete($this->targetFolder . '/sitemap.xml');
+        }
+
+        foreach (File::glob($this->targetFolder . '/sitemap-*.xml') ?: [] as $staleSitemapFile) {
+            File::delete($staleSitemapFile);
+        }
+
+        if ($sitemapChunks->isEmpty()) {
+            $sitemapChunks = collect([collect()]);
+        }
 
         foreach ($sitemapChunks as $chunkIndex => $chunkEntries) {
             $partNumber = $chunkIndex + 1;
-            $fileName = "sitemap-{$partNumber}.xml";
-            $partPath = $this->targetFolder . '/' . $fileName;
+            $fileName = "page-{$partNumber}.xml";
+            $partPath = $sitemapsPath . '/' . $fileName;
 
             $partFile = fopen($partPath, 'w');
             fwrite($partFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
 
             if ($partNumber === 1) {
-                fwrite($partFile, "    <url><loc>{$fullBaseUrl}/</loc><priority>1.0</priority></url>" . PHP_EOL);
+                $homeUrl = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                fwrite($partFile, "    <url><loc>{$homeUrl}</loc><priority>1.0</priority></url>" . PHP_EOL);
             }
 
             foreach ($chunkEntries as $entry) {
-                if (empty($entry->slug)) continue;
-                $url = "{$fullBaseUrl}/{$entry->slug}/";
-                $lastMod = $entry->updated_at->toIso8601String();
+                $url = htmlspecialchars("{$fullBaseUrl}/{$entry->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                $lastMod = htmlspecialchars($entry->updated_at->toIso8601String(), ENT_XML1 | ENT_QUOTES, 'UTF-8');
                 fwrite($partFile, "    <url><loc>{$url}</loc><lastmod>{$lastMod}</lastmod><priority>0.8</priority></url>" . PHP_EOL);
             }
 
             fwrite($partFile, '</urlset>' . PHP_EOL);
             fclose($partFile);
 
-            $sitemapFilesCreated[] = $fileName;
+            $sitemapFilesCreated[] = [
+                'name' => $fileName,
+                'lastmod' => now()->toIso8601String(),
+            ];
         }
 
-        $indexPath = $this->targetFolder . '/sitemap.xml';
+        $indexPath = $sitemapsPath . '/sitemap-index.xml';
         $indexFile = fopen($indexPath, 'w');
 
         fwrite($indexFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
 
-        if (empty($sitemapFilesCreated)) {
-            $sitemapUrl = "{$fullBaseUrl}/sitemap-1.xml";
-            $currentDate = now()->toIso8601String();
+        foreach ($sitemapFilesCreated as $sitemapFile) {
+            $sitemapUrl = htmlspecialchars("{$fullBaseUrl}/sitemaps/{$sitemapFile['name']}", ENT_XML1 | ENT_QUOTES, 'UTF-8');
+            $lastMod = htmlspecialchars($sitemapFile['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
             fwrite($indexFile, '  <sitemap>' . PHP_EOL);
             fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>" . PHP_EOL);
-            fwrite($indexFile, "    <lastmod>{$currentDate}</lastmod>" . PHP_EOL);
+            fwrite($indexFile, "    <lastmod>{$lastMod}</lastmod>" . PHP_EOL);
             fwrite($indexFile, '  </sitemap>' . PHP_EOL);
-        } else {
-            foreach ($sitemapFilesCreated as $sitemapFile) {
-                $sitemapUrl = "{$fullBaseUrl}/{$sitemapFile}";
-                $currentDate = now()->toIso8601String();
-
-                fwrite($indexFile, '  <sitemap>' . PHP_EOL);
-                fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>" . PHP_EOL);
-                fwrite($indexFile, "    <lastmod>{$currentDate}</lastmod>" . PHP_EOL);
-                fwrite($indexFile, '  </sitemap>' . PHP_EOL);
-            }
         }
 
         fwrite($indexFile, '</sitemapindex>' . PHP_EOL);
         fclose($indexFile);
 
-        $this->command->info('   ✔️ Arquitectura unificada: SPA JSON Ready y Sitemaps fragmentados listos.');
+        // ===================================================================
+        // 6. 🚧 404 ESTÁTICO DESACOPLADO
+        // ===================================================================
+        $this->command->comment('   🚧 Generando 404.html estático con rutas absolutas...');
+
+        File::put($this->targetFolder . '/404.html', view('site.404', [
+            'site' => $this->site,
+            'subdir' => $subdir,
+            'subdirUrl' => $fullBaseUrl,
+            'fullBaseUrl' => $fullBaseUrl,
+            'useAbsoluteUrls' => true,
+        ])->render());
+
+        $this->command->info('   ✔️ Arquitectura unificada: SPA JSON Ready, Sitemaps indexados y 404 estático listos.');
     }
 }

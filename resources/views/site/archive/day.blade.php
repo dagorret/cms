@@ -10,18 +10,18 @@
             <p class="text-base leading-7 text-slate-400">{{ $totalPosts }} publicaciones registradas en esta fecha.</p>
         </header>
 
-        <div class="space-y-8">
+        <ol class="overflow-hidden border-t border-slate-800/60">
             @foreach($posts as $post)
-                <article class="border-b border-slate-800/60 pb-8">
-                    <h2>
-                        <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="text-xl font-semibold text-sky-400 hover:text-sky-300 transition-colors">{{ $post->title }}</a>
-                    </h2>
-                    <div class="flex items-center text-sm text-slate-400 gap-2 mt-1">
-                        <span>📅</span>
-                        <time datetime="{{ $post->created_at->format('Y-m-d') }}">{{ $post->created_at->format('d/m/Y') }}</time>
-                    </div>
-                </article>
+                <li class="border-b border-slate-800/60">
+                    <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="flex items-center justify-between gap-6 px-4 py-5 text-slate-200 transition-colors hover:bg-slate-800/50 hover:text-sky-300">
+                        <span class="text-xl font-semibold">{{ $post->title }}</span>
+                        <span class="flex items-center gap-2 text-sm text-slate-400">
+                            <span>📅</span>
+                            <time datetime="{{ $post->created_at->format('Y-m-d') }}">{{ $post->created_at->format('d/m/Y') }}</time>
+                        </span>
+                    </a>
+                </li>
             @endforeach
-        </div>
+        </ol>
     </section>
 @endsection

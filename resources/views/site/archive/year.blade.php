@@ -10,12 +10,12 @@
             <p class="text-base leading-7 text-slate-400">Meses con publicaciones registradas durante este año.</p>
         </header>
 
-        <ol class="grid gap-3 sm:grid-cols-2">
+        <ol class="overflow-hidden border-t border-slate-800/60">
             @foreach($months as $month)
-                <li>
-                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/index.html" class="block border border-slate-800/60 px-5 py-4 text-slate-200 transition-colors hover:border-sky-500/40 hover:bg-slate-800/50 hover:text-sky-300">
-                        <span class="block text-lg font-semibold">Mes {{ $month }}</span>
-                        <span class="mt-1 block text-sm text-slate-500">Consultar días disponibles</span>
+                <li class="border-b border-slate-800/60">
+                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/index.html" class="flex items-center justify-between px-4 py-5 text-slate-200 transition-colors hover:bg-slate-800/50 hover:text-sky-300">
+                        <span class="text-xl font-semibold">Mes {{ $month }}</span>
+                        <span class="text-sm text-slate-500">Ver días</span>
                     </a>
                 </li>
             @endforeach

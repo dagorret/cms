@@ -13,8 +13,8 @@
         <ol class="overflow-hidden border-t border-slate-800/60">
             @foreach($days as $day => $count)
                 <li class="border-b border-slate-800/60">
-                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/{{ $day }}/index.html" class="flex justify-between items-center px-4 py-5 text-slate-200 transition-colors hover:bg-slate-800/50 hover:text-sky-300">
-                        <span class="text-lg font-semibold">Día {{ $day }}</span>
+                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/{{ $day }}/index.html" class="flex items-center justify-between px-4 py-5 text-slate-200 transition-colors hover:bg-slate-800/50 hover:text-sky-300">
+                        <span class="text-xl font-semibold">Día {{ $day }}</span>
                         <span class="text-slate-400 text-sm">🗂️ {{ $count }} publicaciones</span>
                     </a>
                 </li>
