@@ -16,8 +16,29 @@ class PostForm
     {
         // ⚡ Determinamos qué editor renderizar según el archivo de configuración de forma estricta
         $editorComponent = config('static_cms.default_editor') === 'rich_editor'
-            ? RichEditor::make('body')
-            : MarkdownEditor::make('body');
+        ? RichEditor::make('body')
+        ->fileAttachmentsDisk('public')
+        ->fileAttachmentsDirectory('posts/attachments')
+        ->fileAttachmentsVisibility('public')
+        : MarkdownEditor::make('body')
+        ->toolbarButtons([
+            'attachFiles',
+            'blockquote',
+            'bold',
+            'bulletList',
+            'codeBlock',
+            'heading',
+            'italic',
+            'link',
+            'orderedList',
+            'redo',
+            'strike',
+            'table',
+            'undo',
+        ])
+        ->fileAttachmentsDisk('public')
+        ->fileAttachmentsDirectory('posts/attachments');
+        // ❌ ACÁ NO VA LA VISIBILIDAD. Filament la maneja public por defecto en MD.
 
         return $schema
         ->components([

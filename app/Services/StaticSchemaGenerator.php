@@ -422,3 +422,5 @@ class StaticSchemaGenerator
         File::put($path, StaticHtmlCleaner::clean($html));
     }
 }
+
+

@@ -40,7 +40,7 @@ class StressTestSeeder extends Seeder
         Post::query()->delete(); 
 
         $faker = Faker::create('es_ES');
-        $totalPosts = 30000;
+        $totalPosts = 300000;
         $batchSize = 500; 
         $chunks = $totalPosts / $batchSize;
 
