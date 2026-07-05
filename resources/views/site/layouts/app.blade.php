@@ -182,7 +182,10 @@
     </style>
 
     @php
-        $subdirUrl = $subdirUrl ?? ($subdir ?? ($site->subdir ? '/' . trim($site->subdir, '/') : ''));
+        $configuredSubdir = trim((string) ($site->subdir ?? ''), '/');
+        $publicPath = ($configuredSubdir === '' || $configuredSubdir === 'dist') ? '' : '/' . $configuredSubdir;
+        $subdirUrl = $subdirUrl ?? ($subdir ?? $publicPath);
+        $homeUrl = $subdirUrl === '' ? '/' : rtrim($subdirUrl, '/') . '/';
         $useAbsoluteUrls = $useAbsoluteUrls ?? false;
         $assetBaseUrl = rtrim($fullBaseUrl ?? $subdirUrl ?? '', '/');
         $viteManifestPath = public_path('build/manifest.json');
@@ -191,7 +194,7 @@
             : [];
         $viteCss = $viteManifest['resources/css/app.css']['file'] ?? null;
         $viteJs = $viteManifest['resources/js/app.js']['file'] ?? null;
-        $menuFile = base_path('dist' . ($site->subdir ? '/' . trim($site->subdir, '/') : '') . '/menu.html');
+        $menuFile = base_path('dist/menu.html');
         $generatedMenu = file_exists($menuFile) ? trim(file_get_contents($menuFile)) : '';
     @endphp
 
@@ -203,12 +206,15 @@
     @elseif(!app()->runningInConsole())
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
+
+    <link rel="stylesheet" href="/vendor/katex/katex.min.css">
+    <script defer src="/vendor/katex/katex.min.js"></script>
 </head>
 <body class="m-0 bg-[#f7f3eb] font-serif text-[#171717] antialiased [text-rendering:optimizeLegibility]">
     <header class="site-header border-b border-[#d8d0c3] bg-[#f7f3eb]/95 px-6 pb-[18px] pt-[22px] backdrop-blur">
         <div class="header-inner mx-auto flex max-w-[1180px] items-end justify-between gap-6 max-[900px]:block">
             <div>
-                <a href="{{ $subdirUrl ?: '/' }}/" class="brand font-serif text-[clamp(2rem,5vw,4.5rem)] font-bold leading-[.9] tracking-[-.06em] text-[#171717] decoration-[#0f4c5c]/35 underline-offset-[3px]">
+                <a href="{{ $homeUrl }}" class="brand font-serif text-[clamp(2rem,5vw,4.5rem)] font-bold leading-[.9] tracking-[-.06em] text-[#171717] decoration-[#0f4c5c]/35 underline-offset-[3px]">
                     Carlos Dagorret
                 </a>
             </div>
@@ -223,12 +229,12 @@
                 @if($generatedMenu !== '')
                     {!! $generatedMenu !!}
                 @else
-                    <a href="{{ $subdirUrl ?: '/' }}/" data-tag="">Inicio</a>
-                    <a href="{{ $subdirUrl }}/?tag=essay" data-tag="essay">Ensayos</a>
-                    <a href="{{ $subdirUrl }}/?tag=notebook" data-tag="notebook">Cuadernos</a>
-                    <a href="{{ $subdirUrl }}/?tag=conversation" data-tag="conversation">Conversaciones</a>
-                    <a href="{{ $subdirUrl }}/?tag=map" data-tag="map">Mapas</a>
-                    <a href="{{ $subdirUrl }}/?tag=source" data-tag="source">Fuentes</a>
+                    <a href="{{ $homeUrl }}" data-tag="">Inicio</a>
+                    <a href="{{ $homeUrl }}?tag=essay" data-tag="essay">Ensayos</a>
+                    <a href="{{ $homeUrl }}?tag=notebook" data-tag="notebook">Cuadernos</a>
+                    <a href="{{ $homeUrl }}?tag=conversation" data-tag="conversation">Conversaciones</a>
+                    <a href="{{ $homeUrl }}?tag=map" data-tag="map">Mapas</a>
+                    <a href="{{ $homeUrl }}?tag=source" data-tag="source">Fuentes</a>
                     <a href="{{ $subdirUrl }}/sobre/">Sobre</a>
                 @endif
             </nav>
@@ -257,5 +263,15 @@
             </p>
         </div>
     </footer>
+
+    <script defer src="/vendor/katex/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+            ],
+            throwOnError : false
+        });">
+    </script>
 </body>
 </html>

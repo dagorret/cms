@@ -18,7 +18,7 @@ class StaticContentCompiler
 
     public function compile($entries)
     {
-        $subdir = $this->site->subdir ? '/' . trim($this->site->subdir, '/') : '';
+        $publicPath = $this->publicPath();
 
         foreach ($entries as $entry) {
             if (empty($entry->slug)) continue;
@@ -39,13 +39,24 @@ class StaticContentCompiler
             $html = view($viewName, [
                 'post' => $entry,
                 'site' => $this->site,
-                'subdir' => $subdir,
-                'subdirUrl' => $subdir,
+                'subdir' => $publicPath,
+                'subdirUrl' => $publicPath,
             ])->render();
 
             $html = StaticHtmlCleaner::clean($html);
 
             File::put($htmlFile, $html);
         }
+    }
+
+    protected function publicPath(): string
+    {
+        $path = trim((string) $this->site->subdir, '/');
+
+        if ($path === '' || $path === 'dist') {
+            return '';
+        }
+
+        return '/' . $path;
     }
 }

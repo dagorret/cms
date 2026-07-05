@@ -14,11 +14,23 @@ return [
     // 🎨 Apariencia (Apunta a resources/views/themes/{theme_id}/)
     'theme' => env('STATIC_THEME', 'default'),
 
-    // 📝 Editor por Defecto en Filament (markdown, rich_editor)
-    'default_editor' => env('STATIC_EDITOR', 'markdown'), 
+    // 📝 Editor por Defecto en Filament (markdown, rich_editor, editorjs))
+    'default_editor' => env('STATIC_EDITOR', 'editorjs'), 
+
+    'media' => [
+        'type_storage' => 'copy',           // Opciones: 'symlink' o 'copy' (definido por usuario)
+        'base_path'    => '/assets/media',  // Variable 1: El destino fijo anclado (raíz)
+        'subfolder'    => '',          // Variable 2: Palabra clave o categoría (puede ser vacía o nula)
+        'date_format'  => 'Y/m',            // Variable 3: Estructura temporal basada en date() (puede ser 'Y', 'm' o vacía)
+        'optimize'     => true,             // Flag de optimización al compilar
+    ],
 
     // 🚀 Automatización del Pipeline
     'rebuild_on_publish' => env('STATIC_REBUILD_ON_PUBLISH', true), // true = compila al guardar en Filament / false = manual por cron
+
+    'build' => [
+        'php_binary' => env('STATIC_BUILD_PHP_BINARY'),
+    ],
 
     // ⚡ Rendimiento de Construcción Masiva (Etapa 1)
     'build_chunk_size' => env('STATIC_BUILD_CHUNK', 2000), 

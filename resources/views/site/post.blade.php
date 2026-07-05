@@ -53,8 +53,7 @@
     </header>
 
     <article>
-        {{-- Parseamos el Markdown que viene de la base de datos a HTML real --}}
-        {!! Illuminate\Support\Str::markdown($post->body ?? $post->content ?? '') !!}
+        {!! method_exists($post, 'renderedBodyHtml') ? $post->renderedBodyHtml() : App\Support\PostBodyRenderer::render($post->body ?? $post->content ?? '') !!}
     </article>
 
     <footer>

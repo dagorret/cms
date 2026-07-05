@@ -23,14 +23,14 @@ services:
           memory: 4096M       # Limita la memoria RAM a 512 Megabytes
 
   # El entorno de Node.js exclusivo para Vite, Tailwind y NPM sin mezclar dependencias
-  cms-node:
-    build:
-      context: .
-      dockerfile: Dockerfile.node
-    container_name: cms_node_assets
-    volumes:
-      - .:/var/www
-    ports:
-      - "5173:5173" # Puerto por defecto de Vite para Hot Module Replacement (HMR)
-    depends_on:
-      - cms-php
+  #cms-node:
+  #  build:
+  #    context: .
+  #    dockerfile: Dockerfile.node
+  #  container_name: cms_node_assets
+  #  volumes:
+  #    - .:/var/www
+  #  ports:
+  #    - "5173:5173" # Puerto por defecto de Vite para Hot Module Replacement (HMR)
+  #  depends_on:
+  #    - cms-php

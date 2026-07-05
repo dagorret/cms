@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Site;
+use App\Support\PostBodyRenderer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
@@ -16,9 +17,9 @@ class StaticSchemaGenerator
 
     public function build($posts, $pages, $allEntriesLight)
     {
-        $subdir = $this->site->subdir ? '/' . trim($this->site->subdir, '/') : '';
-        $baseUrl = $this->site->url ?: config('app.url', 'http://localhost');
-        $fullBaseUrl = rtrim($baseUrl, '/') . $subdir;
+        $publicPath = $this->publicPath();
+        $baseUrl = rtrim((string) $this->site->domain, '/');
+        $fullBaseUrl = $baseUrl . $publicPath;
 
         // ===================================================================
         // 1. 📦 ÍNDICES JSON MAESTROS Y SEGMENTACIÓN (ARCHIVE & CATEGORIES)
@@ -56,8 +57,8 @@ class StaticSchemaGenerator
         $this->putHtml($archiveRoot . '/index.html', view('site.archive.index', [
             'years' => $groupedArchive->keys()->values(),
             'site' => $this->site,
-            'subdir' => $subdir,
-            'subdirUrl' => $subdir,
+            'subdir' => $publicPath,
+            'subdirUrl' => $publicPath,
         ])->render());
 
         foreach ($groupedArchive as $year => $yearEntries) {
@@ -72,8 +73,8 @@ class StaticSchemaGenerator
                 'year' => $year,
                 'months' => $groupedMonths->keys()->values(),
                 'site' => $this->site,
-                'subdir' => $subdir,
-                'subdirUrl' => $subdir,
+                'subdir' => $publicPath,
+                'subdirUrl' => $publicPath,
             ])->render());
 
             foreach ($groupedMonths as $month => $monthEntries) {
@@ -89,8 +90,8 @@ class StaticSchemaGenerator
                     'month' => $month,
                     'days' => $groupedDays->map(fn($entries) => $entries->count()),
                     'site' => $this->site,
-                    'subdir' => $subdir,
-                    'subdirUrl' => $subdir,
+                    'subdir' => $publicPath,
+                    'subdirUrl' => $publicPath,
                 ])->render());
 
                 foreach ($groupedDays as $day => $dayEntries) {
@@ -105,8 +106,8 @@ class StaticSchemaGenerator
                         'posts' => $dayPosts,
                         'totalPosts' => $dayPosts->count(),
                         'site' => $this->site,
-                        'subdir' => $subdir,
-                        'subdirUrl' => $subdir,
+                        'subdir' => $publicPath,
+                        'subdirUrl' => $publicPath,
                     ])->render());
                 }
             }
@@ -122,17 +123,8 @@ class StaticSchemaGenerator
             ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug))
             ->values();
         $groupedByCategory = $allPostsForData->groupBy(fn($e) => $e->type ?? 'post');
-        $serializePost = fn($e) => [
-            'id' => $e->id,
-            'title' => $e->title,
-            'slug' => $e->slug,
-            'url' => "{$subdir}/{$e->slug}/",
-            'type' => $e->type ?? 'post',
-            'category' => $e->category ?? null,
-            'keywords' => $e->keywords,
-            'excerpt' => trim(strip_tags($e->excerpt ?? '')),
-            'date' => $e->created_at->format('Y-m-d'),
-        ];
+        $typeLabels = collect(config('static_cms.types', []));
+        $serializePost = fn($e) => $this->serializePost($e, $typeLabels, $publicPath);
 
         if (File::exists($dataRoot)) {
             File::deleteDirectory($dataRoot);
@@ -140,7 +132,6 @@ class StaticSchemaGenerator
 
         File::makeDirectory($tagsDataRoot, 0755, true);
 
-        $typeLabels = collect(config('static_cms.types', []));
         $menuItems = $typeLabels
             ->map(function ($label, $type) use ($groupedByCategory, $postsPerPage) {
                 $entries = $groupedByCategory->get($type, collect());
@@ -157,7 +148,7 @@ class StaticSchemaGenerator
                     'slug' => $slug,
                     'tag' => $slug,
                     'count' => $entries->count(),
-                    'total_pages' => (int) ceil($entries->count() / $postsPerPage),
+                    'totalPages' => (int) ceil($entries->count() / $postsPerPage),
                 ];
             })
             ->filter()
@@ -175,7 +166,7 @@ class StaticSchemaGenerator
                     'slug' => $slug,
                     'tag' => $slug,
                     'count' => $entries->count(),
-                    'total_pages' => (int) ceil($entries->count() / $postsPerPage),
+                    'totalPages' => (int) ceil($entries->count() / $postsPerPage),
                 ];
             })
             ->values();
@@ -204,8 +195,8 @@ class StaticSchemaGenerator
                 $chunkData = $postsPayload->toJson();
                 $tagPayload = [
                     'tag' => $catSlug,
-                    'current_page' => $pageNum,
-                    'total_pages' => $catTotalPages,
+                    'currentPage' => $pageNum,
+                    'totalPages' => $catTotalPages,
                     'posts' => $postsPayload,
                 ];
 
@@ -227,7 +218,7 @@ class StaticSchemaGenerator
             'items' => $menuItems,
             'pages' => $pages,
             'site' => $this->site,
-            'subdirUrl' => $subdir,
+            'subdirUrl' => $publicPath,
         ])->render();
         $this->putHtml($this->targetFolder . '/menu.html', $menuHtml);
 
@@ -265,8 +256,8 @@ class StaticSchemaGenerator
             $currentPage = $index + 1;
             $postsPayload = $chunkPosts->map($serializePost)->values();
             $pagePayload = [
-                'current_page' => $currentPage,
-                'total_pages' => $totalPages,
+                'currentPage' => $currentPage,
+                'totalPages' => $totalPages,
                 'posts' => $postsPayload,
             ];
 
@@ -275,11 +266,12 @@ class StaticSchemaGenerator
             if ($currentPage === 1) {
                 // La página 1 de la Home siempre es un HTML real masticado para el landing inicial
                 $indexHtml = view('site.index', [
-                    'posts' => $chunkPosts,
+                    'posts' => $postsPayload,
                     'site' => $this->site,
                     'currentPage' => 1,
                     'totalPages' => $totalPages,
-                    'subdirUrl' => $subdir
+                    'subdirUrl' => $publicPath,
+                    'dataBaseUrl' => $this->joinPublicPath($publicPath, 'data'),
                 ])->render();
 
                 $this->putHtml($this->targetFolder . '/index.html', $indexHtml);
@@ -408,7 +400,7 @@ class StaticSchemaGenerator
 
         $this->putHtml($this->targetFolder . '/404.html', view('site.404', [
             'site' => $this->site,
-            'subdir' => $subdir,
+            'subdir' => $publicPath,
             'subdirUrl' => $fullBaseUrl,
             'fullBaseUrl' => $fullBaseUrl,
             'useAbsoluteUrls' => true,
@@ -421,6 +413,50 @@ class StaticSchemaGenerator
     {
         File::put($path, StaticHtmlCleaner::clean($html));
     }
+
+    protected function serializePost($entry, $typeLabels, string $publicPath): array
+    {
+        $type = $entry->category ?: ($entry->type ?? 'post');
+
+        return [
+            'id' => $entry->id,
+            'title' => $entry->title,
+            'slug' => $entry->slug,
+            'url' => $this->joinPublicPath($publicPath, "{$entry->slug}/"),
+            'type' => $entry->type ?? 'post',
+            'typeLabel' => $typeLabels->get($type, ucfirst((string) $type)),
+            'category' => $entry->category ?? null,
+            'tags' => collect(explode(',', (string) $entry->keywords))
+                ->map(fn($tag) => trim($tag))
+                ->filter()
+                ->values()
+                ->all(),
+            'excerpt' => method_exists($entry, 'getExcerpt')
+                ? $entry->getExcerpt(30)
+                : PostBodyRenderer::excerpt($entry->body ?? '', 30),
+            'date' => $entry->created_at?->format('Y-m-d'),
+        ];
+    }
+
+    protected function publicPath(): string
+    {
+        $path = trim((string) $this->site->subdir, '/');
+
+        if ($path === '' || $path === 'dist') {
+            return '';
+        }
+
+        return '/' . $path;
+    }
+
+    protected function joinPublicPath(string $publicPath, string $path): string
+    {
+        $path = trim($path, '/');
+
+        if ($path === '') {
+            return $publicPath === '' ? '/' : "{$publicPath}/";
+        }
+
+        return ($publicPath === '' ? '' : $publicPath) . "/{$path}/";
+    }
 }
-
-

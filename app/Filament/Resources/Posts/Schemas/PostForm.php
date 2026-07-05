@@ -8,37 +8,40 @@ use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\MarkdownEditor; 
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Toggle;
 use Illuminate\Support\Str;
+use Athphane\FilamentEditorjs\Forms\Components\EditorjsTextField;
 
 class PostForm
 {
     public static function configure(Schema $schema): Schema
     {
         // ⚡ Determinamos qué editor renderizar según el archivo de configuración de forma estricta
-        $editorComponent = config('static_cms.default_editor') === 'rich_editor'
-        ? RichEditor::make('body')
+        $editorType = config('static_cms.default_editor');
+
+$editorComponent = match ($editorType) {
+    'editorjs' => EditorjsTextField::make('body')
+        ->placeholder('Empezá a escribir tu obra maestra en bloques...'),
+
+    'rich_editor' => RichEditor::make('body')
         ->fileAttachmentsDisk('public')
-        ->fileAttachmentsDirectory('posts/attachments')
+        ->fileAttachmentsDirectory(self::resolveMediaDirectory())
         ->fileAttachmentsVisibility('public')
-        : MarkdownEditor::make('body')
+        ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/' . trim((string) $file, '/') : null),
+
+    default => MarkdownEditor::make('body')
         ->toolbarButtons([
-            'attachFiles',
-            'blockquote',
-            'bold',
-            'bulletList',
-            'codeBlock',
-            'heading',
-            'italic',
-            'link',
-            'orderedList',
-            'redo',
-            'strike',
-            'table',
-            'undo',
+            'attachFiles', 'blockquote', 'bold', 'bulletList', 'codeBlock',
+            'heading', 'italic', 'link', 'orderedList', 'redo', 'strike',
+            'table', 'undo',
         ])
         ->fileAttachmentsDisk('public')
-        ->fileAttachmentsDirectory('posts/attachments');
-        // ❌ ACÁ NO VA LA VISIBILIDAD. Filament la maneja public por defecto en MD.
+        ->fileAttachmentsDirectory(self::resolveMediaDirectory())
+        ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/' . trim((string) $file, '/') : null),
+};
+
+// Al final le clavás el ancho completo a cualquiera que elija
+$editorComponent->columnSpanFull();
 
         return $schema
         ->components([
@@ -74,6 +77,11 @@ class PostForm
             ->default('draft')
             ->required(),
 
+            Toggle::make('has_math')
+            ->label('Contiene formulas matematicas')
+            ->helperText('Activa el post-procesado KaTeX solo para este articulo.')
+            ->default(false),
+
             Select::make('site_id')
             ->relationship('site', 'long_name') 
             ->preload()                          
@@ -88,5 +96,20 @@ class PostForm
             DateTimePicker::make('static_built_at')
             ->disabled(),
         ]);
+    }
+
+    protected static function resolveMediaDirectory(): string
+    {
+        $basePath = trim((string) config('static_cms.media.base_path'), '/');
+        $subfolder = trim((string) config('static_cms.media.subfolder'), '/');
+        $dateFormat = trim((string) config('static_cms.media.date_format'));
+        $datedPath = $dateFormat !== '' ? date($dateFormat) : null;
+
+        $segments = array_filter(
+            [$basePath, $subfolder, $datedPath],
+            static fn (?string $segment): bool => $segment !== null && trim($segment, '/') !== '',
+        );
+
+        return implode('/', $segments) ?: 'assets/media';
     }
 }
