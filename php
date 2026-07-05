@@ -1,2 +1,2 @@
 #!/bin/bash
-docker compose exec -it cms-php php "$@"
+docker compose exec -u 1000 -it cms-php php "$@"
