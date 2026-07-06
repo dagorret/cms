@@ -20,6 +20,9 @@ class SiteForm
                 TextInput::make('domain')
                     ->required(),
                 TextInput::make('subdir'),
+                TextInput::make('dist_path')
+                    ->label('DIST_PATH')
+                    ->required(),
             ]);
     }
 }

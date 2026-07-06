@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\File;
 
 class StaticContentCompiler
 {
+    protected const ENTRY_MANIFEST = '.cms-faro-entry.json';
+
     public function __construct(
         protected Command $command,
         protected Site $site,
@@ -46,6 +48,14 @@ class StaticContentCompiler
             $html = StaticHtmlCleaner::clean($html);
 
             File::put($htmlFile, $html);
+            File::put($entryFolder . '/' . self::ENTRY_MANIFEST, json_encode([
+                'post_id' => $entry->id,
+                'site_id' => $this->site->getKey(),
+                'site_short_name' => $this->site->short_name,
+                'slug' => $entry->slug,
+                'status' => $entry->status,
+                'built_at' => now()->toIso8601String(),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
     }
 

@@ -14,6 +14,7 @@ class Site extends Model
         'meta_description',
         'domain',
         'subdir',
+        'dist_path',
     ];
 
     // De paso ya dejamos declarada la relación: Un sitio tiene muchos posts

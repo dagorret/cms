@@ -13,6 +13,7 @@ services:
       - .:/var/www
     ports:
       - "8000:8000"
+      - "5173:5173"
     environment:
       - APP_ENV=local
       - APP_DEBUG=true
@@ -20,7 +21,7 @@ services:
       resources:
         limits:
           cpus: '4.0'        # Limita estrictamente a 1 núcleo de CPU
-          memory: 4096M       # Limita la memoria RAM a 512 Megabytes
+          memory: 1G       # Limita la memoria RAM a 512 Megabytes
 
   # El entorno de Node.js exclusivo para Vite, Tailwind y NPM sin mezclar dependencias
   #cms-node:

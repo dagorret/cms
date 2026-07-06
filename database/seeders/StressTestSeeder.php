@@ -33,6 +33,7 @@ class StressTestSeeder extends Seeder
                 'meta_description' => 'Un sitio de pruebas volumétricas para el motor estático tipo NASA.',
                 'domain' => 'https://ensayos.test',
                 'subdir' => null,
+                'dist_path' => base_path('dist/ensayos'),
             ]
         );
 

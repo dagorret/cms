@@ -15,9 +15,18 @@ final class StaticBuildProcess
 {
     public static function runTarget(string $target): ProcessResult
     {
-        $target = self::normalizeTarget($target);
+        throw new RuntimeException('runTarget ya no puede resolver un sitio por defecto. Usa runSite($siteIdentifier, $scope).');
+    }
 
-        return self::run(['artisan', 'site:build', $target]);
+    public static function runSite(int|string $siteIdentifier, string $scope = 'all'): ProcessResult
+    {
+        $siteIdentifier = trim((string) $siteIdentifier);
+
+        if ($siteIdentifier === '') {
+            throw new RuntimeException('Debes indicar el sitio a compilar.');
+        }
+
+        return self::run(['artisan', 'site:build', $siteIdentifier, '--scope=' . self::normalizeScope($scope)]);
     }
 
     public static function runPost(Post $post): ProcessResult
@@ -64,11 +73,15 @@ final class StaticBuildProcess
         return is_executable(base_path('php')) ? './php' : PHP_BINARY;
     }
 
-    protected static function normalizeTarget(string $target): string
+    protected static function normalizeScope(string $scope): string
     {
-        $target = trim($target);
+        $scope = trim($scope) !== '' ? trim($scope) : 'all';
 
-        return in_array($target, ['all', 'posts', 'logo'], true) ? $target : 'all';
+        if (! in_array($scope, ['all', 'posts', 'logo'], true)) {
+            throw new RuntimeException("Scope invalido [{$scope}]. Usa uno de: all, posts, logo.");
+        }
+
+        return $scope;
     }
 
     protected static function resolveSiteCode(Post $post): ?string
@@ -86,6 +99,6 @@ final class StaticBuildProcess
             return $siteCode ?: (string) $post->site_id;
         }
 
-        return Site::query()->orderBy('id')->value('short_name');
+        return null;
     }
 }

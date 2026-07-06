@@ -1,2 +1,3 @@
 #!/bin/bash
-docker compose exec -it cms-node npm "$@"
+docker exec -it cms_php_app npm "$@"
+

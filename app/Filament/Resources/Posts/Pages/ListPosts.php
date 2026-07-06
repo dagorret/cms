@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Posts\Pages;
 
 use App\Filament\Resources\Posts\PostResource;
+use App\Models\Site;
 use App\Support\StaticBuildProcess;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
@@ -25,6 +26,15 @@ class ListPosts extends ListRecords
                 ->modalHeading('Lanzar Orquestador NASA')
                 ->modalSubmitActionLabel('Compilar')
                 ->schema([
+                    Select::make('site_id')
+                        ->label('Sitio')
+                        ->options(fn (): array => Site::query()
+                            ->orderBy('long_name')
+                            ->pluck('long_name', 'id')
+                            ->all())
+                        ->searchable()
+                        ->preload()
+                        ->required(),
                     Select::make('target')
                         ->label('Seccion')
                         ->options([
@@ -37,7 +47,10 @@ class ListPosts extends ListRecords
                 ])
                 ->action(function (array $data): void {
                     try {
-                        $result = StaticBuildProcess::runTarget((string) ($data['target'] ?? 'all'));
+                        $result = StaticBuildProcess::runSite(
+                            (string) $data['site_id'],
+                            (string) ($data['target'] ?? 'all'),
+                        );
 
                         Notification::make()
                             ->title($result->successful() ? 'Orquestador finalizado' : 'Fallo el orquestador')

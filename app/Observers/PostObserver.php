@@ -3,8 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Post;
-use App\Models\Site;
-use Illuminate\Support\Facades\Artisan;
+use App\Support\StaticBuildQueue;
 
 class PostObserver
 {
@@ -37,37 +36,10 @@ class PostObserver
      */
     protected function rebuildSite(Post $post): void
     {
-        if (!config('static_cms.rebuild_on_publish')) {
+        if (! config('static_cms.rebuild_on_publish')) {
             return;
         }
 
-        $siteCode = $this->resolveSiteCode($post);
-
-        if (!$siteCode) {
-            return;
-        }
-
-        Artisan::queue('site:build', [
-            'site_code' => $siteCode,
-            '--force' => true,
-        ]);
-    }
-
-    protected function resolveSiteCode(Post $post): ?string
-    {
-        if ($post->relationLoaded('site') && $post->site) {
-            return $post->site->code
-                ?? $post->site->short_name
-                ?? null;
-        }
-
-        if (!$post->site_id) {
-            return null;
-        }
-
-        return Site::query()
-            ->where('short_name', $post->site_id)
-            ->orWhere('id', $post->site_id)
-            ->value('short_name') ?: $post->site_id;
+        StaticBuildQueue::queuePostQuietly($post);
     }
 }

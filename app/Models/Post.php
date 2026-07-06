@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use App\Support\PostBodyRenderer;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -16,7 +17,10 @@ class Post extends Model implements HasMedia
     use InteractsWithMedia;
     use ModelHasEditorJsComponent;
 
-    // Agregá este array con los campos de tu tabla:
+    public const STATUS_DRAFT = 'draft';
+    public const STATUS_PUBLISHED = 'published';
+    public const STATUS_SCHEDULED = 'scheduled';
+
     protected $fillable = [
         'title',
         'slug',
@@ -39,6 +43,60 @@ class Post extends Model implements HasMedia
         'has_math' => 'boolean',
         'published_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Post $post): void {
+            if (blank($post->slug)) {
+                $post->slug = static::makeUniqueSlug((string) $post->title);
+
+                return;
+            }
+
+            $post->slug = static::normalizeSlug((string) $post->slug);
+        });
+
+        static::saving(function (Post $post): void {
+            if (filled($post->slug)) {
+                $post->slug = static::normalizeSlug((string) $post->slug);
+
+                return;
+            }
+
+            if (filled($post->title)) {
+                $post->slug = static::makeUniqueSlug((string) $post->title, $post->getKey());
+            }
+        });
+    }
+
+    public function isPublished(): bool
+    {
+        return $this->status === self::STATUS_PUBLISHED;
+    }
+
+    public static function normalizeSlug(string $value): string
+    {
+        return Str::slug($value) ?: 'post';
+    }
+
+    protected static function makeUniqueSlug(string $source, int|string|null $ignoreId = null): string
+    {
+        $baseSlug = static::normalizeSlug($source);
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        while (
+            static::query()
+                ->where('slug', $slug)
+                ->when($ignoreId !== null, fn ($query) => $query->whereKeyNot($ignoreId))
+                ->exists()
+        ) {
+            $slug = "{$baseSlug}-{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
+    }
 
     public function getBodyAttribute(mixed $value): mixed
     {
