@@ -1,3 +1,8 @@
-#!/bin/bash
-docker exec -it cms_php_app npm "$@"
+#!/usr/bin/env bash
+set -e
 
+if [ "$(docker compose ps --status running -q cms-php)" ]; then
+    docker compose exec cms-php npm "$@"
+else
+    docker compose run --rm cms-php npm "$@"
+fi

@@ -40,6 +40,7 @@ bcmath \
 xml \
 dom \
 pdo_sqlite \
+exif \
 && php -r 'exit(extension_loaded("pdo_sqlite") ? 0 : 1);' \
 && php -r '$gd = gd_info(); exit(!empty($gd["WebP Support"]) && !empty($gd["JPEG Support"]) && !empty($gd["FreeType Support"]) ? 0 : 1);' \
 && apk del .build-deps \

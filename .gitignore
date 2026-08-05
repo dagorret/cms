@@ -7,6 +7,10 @@
 /*.sqlite-journal
 /*.sqlite-shm
 /*.sqlite-wal
+# Base de datos SQLite
+database/database.sqlite
+database/*.sqlite
+database/*.sqlite-*
 
 # --- Entorno y Secretos (Seguridad Absoluta) ---
 .env
