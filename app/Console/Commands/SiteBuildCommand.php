@@ -97,12 +97,20 @@ class SiteBuildCommand extends Command
         // ===================================================================
         // 🚀 ETAPA 1: BUCLE WHILE CON FUENTE DE VERDAD EN BD + CURSOR
         // ===================================================================
-        $compiler = new StaticContentCompiler($this, $site, $targetFolder, $force, $resource);
+        $recoverMissingEntryOutputs = ! $force
+            && $this->hasMissingPublishedEntryOutput($site, $targetFolder, $section);
+        $rebuildAllEntries = $force || $recoverMissingEntryOutputs;
+
+        if ($recoverMissingEntryOutputs) {
+            $this->warn('⚠️  La BD marca el contenido como compilado, pero faltan HTML individuales. Se reconstruyen las entradas publicadas.');
+        }
+
+        $compiler = new StaticContentCompiler($this, $site, $targetFolder, $rebuildAllEntries, $resource);
 
         // Conteo base condicional para saber el trabajo pendiente real
         $totalEntries = $this->publishedSitePosts($site)
             ->when($section === 'posts', fn ($query) => $this->scopeOnlyPosts($query))
-            ->when(! $force, function ($query) {
+            ->when(! $rebuildAllEntries, function ($query) {
                 $query->where(function ($q) {
                     $q->whereNull('static_built_at')
                         ->orWhereColumn('updated_at', '>', 'static_built_at');
@@ -125,7 +133,7 @@ class SiteBuildCommand extends Command
                 ->where('id', '>', $lastId)
                 ->when($section === 'posts', fn ($query) => $this->scopeOnlyPosts($query))
                 // ⚡ Incrementalidad inteligente: si no es force, solo trae lo sucio
-                ->when(! $force, function ($query) {
+                ->when(! $rebuildAllEntries, function ($query) {
                     $query->where(function ($q) {
                         $q->whereNull('static_built_at')
                             ->orWhereColumn('updated_at', '>', 'static_built_at');
@@ -169,37 +177,7 @@ class SiteBuildCommand extends Command
         // ===================================================================
         // 📦 ETAPA 2: ESTRUCTURAS GLOBALES (Se actualizan siempre rápido)
         // ===================================================================
-        $this->info('📦 Regenerando índices globales dinámicos (JSON, Portadas, Sitemap)...');
-
-        $lightColumns = [
-            'id',
-            'slug',
-            'title',
-            'body',
-            'type',
-            'keywords',
-            'created_at',
-            'updated_at',
-        ];
-
-        if (Schema::hasColumn('posts', 'category')) {
-            $lightColumns[] = 'category';
-        }
-
-        if (Schema::hasColumn('posts', 'has_math')) {
-            $lightColumns[] = 'has_math';
-        }
-
-        $allEntriesLight = $this->publishedSitePosts($site)
-            ->select($lightColumns)
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $posts = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'post');
-        $pages = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'page');
-
-        $generator = new StaticSchemaGenerator($this, $site, $targetFolder);
-        $generator->build($posts, $pages, $allEntriesLight);
+        $this->regenerateGlobalStructures($site, $targetFolder);
 
         try {
             $this->processMediaAssets($targetFolder);
@@ -238,10 +216,15 @@ class SiteBuildCommand extends Command
 
             if ($inactivePost) {
                 $this->deleteEntryFolder($targetFolder, (string) $inactivePost->slug);
-                $this->synchronizePublishedEntryFolders($site, $targetFolder);
                 $this->warn("⚠️  Articulo [{$postId}] omitido: estado actual [{$inactivePost->status}], solo se compila status=published.");
 
-                return Command::SUCCESS;
+                return $this->finalizeSinglePostBuild($site, $targetFolder);
+            }
+
+            if ($this->hasManagedEntryForPost($site, $targetFolder, $postId)) {
+                $this->warn("⚠️  El articulo [{$postId}] ya no existe; se elimina su salida estatica y se regeneran los indices globales.");
+
+                return $this->finalizeSinglePostBuild($site, $targetFolder);
             }
 
             $this->error("❌ No existe el post [{$postId}] para el sitio [{$site->short_name}].");
@@ -257,7 +240,57 @@ class SiteBuildCommand extends Command
         ]);
 
         $this->info("✔️ Articulo [{$post->id}] {$post->slug} compilado en {$this->joinPath($targetFolder, "{$post->slug}/index.html")}");
-        $this->synchronizePublishedEntryFolders($site, $targetFolder);
+
+        return $this->finalizeSinglePostBuild($site, $targetFolder);
+    }
+
+    protected function regenerateGlobalStructures(Site $site, string $targetFolder): void
+    {
+        $this->info('📦 Regenerando índices globales dinámicos (JSON, Portadas, Sitemap)...');
+
+        $lightColumns = [
+            'id',
+            'slug',
+            'title',
+            'body',
+            'type',
+            'keywords',
+            'created_at',
+            'updated_at',
+        ];
+
+        if (Schema::hasColumn('posts', 'category')) {
+            $lightColumns[] = 'category';
+        }
+
+        if (Schema::hasColumn('posts', 'has_math')) {
+            $lightColumns[] = 'has_math';
+        }
+
+        $allEntriesLight = $this->publishedSitePosts($site)
+            ->select($lightColumns)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $posts = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'post');
+        $pages = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'page');
+
+        $generator = new StaticSchemaGenerator($this, $site, $targetFolder);
+        $generator->build($posts, $pages, $allEntriesLight);
+    }
+
+    protected function finalizeSinglePostBuild(Site $site, string $targetFolder): int
+    {
+        try {
+            $this->regenerateGlobalStructures($site, $targetFolder);
+            $this->processMediaAssets($targetFolder);
+            $this->synchronizePublishedEntryFolders($site, $targetFolder);
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->error('❌ Error al finalizar la compilacion incremental: '.$exception->getMessage());
+
+            return Command::FAILURE;
+        }
 
         return Command::SUCCESS;
     }
@@ -397,6 +430,22 @@ class SiteBuildCommand extends Command
         });
     }
 
+    protected function hasMissingPublishedEntryOutput(Site $site, string $targetFolder, string $section): bool
+    {
+        return $this->publishedSitePosts($site)
+            ->when($section === 'posts', fn ($query) => $this->scopeOnlyPosts($query))
+            ->whereNotNull('slug')
+            ->select(['id', 'slug'])
+            ->orderBy('id')
+            ->lazyById(2000, 'id')
+            ->contains(function (Post $entry) use ($targetFolder): bool {
+                $slug = trim((string) $entry->slug, '/\\');
+
+                return $this->isSafeEntrySlug($slug)
+                    && ! File::isFile($this->joinPath($targetFolder, "{$slug}/index.html"));
+            });
+    }
+
     protected function synchronizePublishedEntryFolders(Site $site, string $targetFolder): int
     {
         $activeSlugs = $this->activePublishedSlugMap($site);
@@ -484,6 +533,23 @@ class SiteBuildCommand extends Command
 
         return in_array((string) ($manifest['site_id'] ?? ''), $siteTokens, true)
             || in_array((string) ($manifest['site_short_name'] ?? ''), $siteTokens, true);
+    }
+
+    protected function hasManagedEntryForPost(Site $site, string $targetFolder, int $postId): bool
+    {
+        foreach (File::directories($targetFolder) as $directory) {
+            $manifest = $this->entryManifest($directory);
+
+            if ($manifest === [] || ! $this->entryManifestBelongsToSite($manifest, $site)) {
+                continue;
+            }
+
+            if ((string) ($manifest['post_id'] ?? '') === (string) $postId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function entrySlugFromDirectory(string $directory, array $manifest): string

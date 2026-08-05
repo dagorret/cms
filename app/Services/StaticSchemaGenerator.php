@@ -119,10 +119,11 @@ class StaticSchemaGenerator
         $maxHomePages = max((int) config('static_cms.max_home_pages', 20), 1);
         $dataRoot = $this->targetFolder . '/data';
         $tagsDataRoot = $dataRoot . '/tags';
+        $categoryRoot = $this->targetFolder . '/category';
         $allPostsForData = $allEntriesLight
             ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug))
             ->values();
-        $groupedByCategory = $allPostsForData->groupBy(fn($e) => $e->type ?? 'post');
+        $groupedByCategory = $allPostsForData->groupBy(fn($e) => $e->category ?: ($e->type ?? 'post'));
         $typeLabels = collect(config('static_cms.types', []));
         $serializePost = fn($e) => $this->serializePost($e, $typeLabels, $publicPath);
 
@@ -130,7 +131,12 @@ class StaticSchemaGenerator
             File::deleteDirectory($dataRoot);
         }
 
+        if (File::exists($categoryRoot)) {
+            File::deleteDirectory($categoryRoot);
+        }
+
         File::makeDirectory($tagsDataRoot, 0755, true);
+        File::makeDirectory($categoryRoot, 0755, true);
 
         $menuItems = $typeLabels
             ->map(function ($label, $type) use ($groupedByCategory, $postsPerPage) {
@@ -238,9 +244,7 @@ class StaticSchemaGenerator
             ->take($maxHomePages - 1);
 
         // Página 1 liviana: 10 posts. Páginas siguientes: 20 posts, hasta el límite reciente.
-        $pagesToRender = $firstPagePosts->isEmpty()
-            ? collect()
-            : collect([$firstPagePosts])->concat($paginatedPosts)->values();
+        $pagesToRender = collect([$firstPagePosts])->concat($paginatedPosts)->values();
         $totalPages = $pagesToRender->count();
 
         // Si existía la estructura vieja de carpetas HTML para las páginas, la limpiamos

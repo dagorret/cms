@@ -18,7 +18,7 @@ final class StaticBuildProcess
         throw new RuntimeException('runTarget ya no puede resolver un sitio por defecto. Usa runSite($siteIdentifier, $scope).');
     }
 
-    public static function runSite(int|string $siteIdentifier, string $scope = 'all'): ProcessResult
+    public static function runSite(int|string $siteIdentifier, string $scope = 'all', bool $force = false): ProcessResult
     {
         $siteIdentifier = trim((string) $siteIdentifier);
 
@@ -26,10 +26,10 @@ final class StaticBuildProcess
             throw new RuntimeException('Debes indicar el sitio a compilar.');
         }
 
-        return self::run(['artisan', 'site:build', $siteIdentifier, '--scope=' . self::normalizeScope($scope)]);
+        return self::runBuild($siteIdentifier, scope: $scope, force: $force);
     }
 
-    public static function runPost(Post $post): ProcessResult
+    public static function runPost(Post $post, bool $force = false): ProcessResult
     {
         $siteCode = self::resolveSiteCode($post);
 
@@ -37,12 +37,46 @@ final class StaticBuildProcess
             throw new RuntimeException('No se pudo resolver el sitio asociado al post.');
         }
 
-        return self::run(['artisan', 'site:build', $siteCode, '--post=' . $post->getKey()]);
+        return self::runBuild($siteCode, postId: (int) $post->getKey(), force: $force);
+    }
+
+    public static function runBuild(
+        int|string $siteIdentifier,
+        ?int $postId = null,
+        bool $force = false,
+        string $scope = 'all',
+    ): ProcessResult {
+        $siteIdentifier = trim((string) $siteIdentifier);
+
+        if ($siteIdentifier === '') {
+            throw new RuntimeException('Debes indicar el sitio a compilar.');
+        }
+
+        if ($postId !== null && $postId < 1) {
+            throw new RuntimeException('El ID del post debe ser un entero positivo.');
+        }
+
+        $scope = self::normalizeScope($scope);
+        $arguments = ['artisan', 'site:build', $siteIdentifier];
+
+        if ($scope !== 'all') {
+            $arguments[] = '--scope='.$scope;
+        }
+
+        if ($postId !== null) {
+            $arguments[] = '--post='.$postId;
+        }
+
+        if ($force) {
+            $arguments[] = '--force';
+        }
+
+        return self::run($arguments);
     }
 
     public static function summary(ProcessResult $result, int $limit = 900): string
     {
-        $output = trim($result->output() . PHP_EOL . $result->errorOutput());
+        $output = trim($result->output().PHP_EOL.$result->errorOutput());
         $output = preg_replace('/\s+/', ' ', $output) ?: 'Sin salida del proceso.';
 
         return Str::limit($output, $limit);
