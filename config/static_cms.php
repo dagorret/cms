@@ -34,6 +34,24 @@ return [
         'php_binary' => env('STATIC_BUILD_PHP_BINARY'),
     ],
 
+    // Directorio portable de salida y build compilado consumido por el exportador.
+    'dist_root' => env('STATIC_DIST_ROOT', 'dist'),
+
+    'vite' => [
+        'build_path' => env('STATIC_VITE_BUILD_PATH'),
+    ],
+
+    'menu_locations' => [
+        'primary' => 'Principal',
+        'secondary' => 'Secundario',
+        'footer' => 'Pie',
+        'footer_legal' => 'Legal del pie',
+        'mobile' => 'Móvil',
+        'social' => 'Social',
+    ],
+
+    'menu_max_depth' => env('STATIC_MENU_MAX_DEPTH', 3),
+
     // ⚡ Rendimiento de Construcción Masiva (Etapa 1)
     'build_chunk_size' => env('STATIC_BUILD_CHUNK', 2000),
 
@@ -44,7 +62,7 @@ return [
 
     // 📡 Límites de Feeds y Sitemaps Masivos
     'max_feed_items' => env('STATIC_MAX_FEED_ITEMS', 50),
-    'sitemap_per_page' => env('STATIC_SITEMAP_PER_PAGE', 1000),
+    'sitemap_urls_per_file' => env('STATIC_SITEMAP_URLS_PER_FILE', 1000),
 
     // Tipo técnico. Las categorías editoriales viven en la tabla categories.
     'content_types' => [

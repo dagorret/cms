@@ -89,10 +89,10 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertFileDoesNotExist($this->path("{$draft->slug}/index.html"));
         $this->assertFileExists($this->path('index.html'));
         $this->assertFileExists($this->path('feed.xml'));
-        $this->assertFileExists($this->path('sitemaps/sitemap-index.xml'));
+        $this->assertFileExists($this->path('sitemap.xml'));
         $this->assertStringContainsString('Publicado uno', File::get($this->path('index.html')));
         $this->assertStringContainsString('publicado-dos', File::get($this->path('feed.xml')));
-        $this->assertStringContainsString('/publicado-uno/', File::get($this->path('sitemaps/page-1.xml')));
+        $this->assertStringContainsString('/publicado-uno/', File::get($this->path('sitemaps/posts-1.xml')));
         $this->assertStringNotContainsString('Borrador oculto', File::get($this->path('index.html')));
     }
 
@@ -135,7 +135,7 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertContains($post->id, array_column($homePayload['posts'], 'id'));
         $this->assertStringContainsString('Sobre este sitio', File::get($this->path('menu.html')));
         $this->assertStringNotContainsString('/sobre/', File::get($this->path('feed.xml')));
-        $this->assertStringContainsString('/sobre/', File::get($this->path('sitemaps/page-1.xml')));
+        $this->assertStringContainsString('/sobre/', File::get($this->path('sitemaps/pages-1.xml')));
         $this->assertNull($page->fresh()->category_id);
     }
 
@@ -171,8 +171,8 @@ class SiteBuildSinglePostTest extends TestCase
 
         $this->assertFileExists($this->path('category/siglo-xix/index.html'));
         $this->assertFileDoesNotExist($this->path('category/historia/siglo-xix/index.html'));
-        $payload = json_decode(File::get($this->path('category/siglo-xix/page-1.json')), true);
-        $serialized = collect($payload)->firstWhere('id', $post->id);
+        $payload = json_decode(File::get($this->path('data/categories/siglo-xix/page-1.json')), true);
+        $serialized = collect($payload['posts'])->firstWhere('id', $post->id);
         $this->assertSame('Historia / Siglo XIX', $serialized['category']['path']);
     }
 
@@ -277,7 +277,7 @@ class SiteBuildSinglePostTest extends TestCase
         $post->update(['slug' => 'slug-actualizado']);
 
         $this->assertSame(0, $this->buildPost($post));
-        $sitemap = File::get($this->path('sitemaps/page-1.xml'));
+        $sitemap = File::get($this->path('sitemaps/posts-1.xml'));
         $this->assertStringContainsString('/slug-actualizado/', $sitemap);
         $this->assertStringNotContainsString('/slug-inicial/', $sitemap);
     }
@@ -306,11 +306,11 @@ class SiteBuildSinglePostTest extends TestCase
         $post->update(['title' => 'Categoria actualizada']);
 
         $this->assertSame(0, $this->buildPost($post));
-        $payload = File::get($this->path('category/historia/page-1.json'));
+        $payload = File::get($this->path('data/categories/historia/page-1.json'));
         $this->assertStringContainsString('Categoria actualizada', $payload);
     }
 
-    public function test_post_regenera_los_indices_de_tags_implementados(): void
+    public function test_post_regenera_los_indices_de_categorias(): void
     {
         $post = $this->createPost(['category' => 'Tecnologia', 'keywords' => 'php, laravel']);
         $this->buildAll();
@@ -318,7 +318,7 @@ class SiteBuildSinglePostTest extends TestCase
         $post->update(['title' => 'Tag actualizado']);
 
         $this->assertSame(0, $this->buildPost($post));
-        $payload = File::get($this->path('data/tags/tecnologia/page-1.json'));
+        $payload = File::get($this->path('data/categories/tecnologia/page-1.json'));
         $this->assertStringContainsString('Tag actualizado', $payload);
         $this->assertStringContainsString('php', $payload);
     }
@@ -358,16 +358,16 @@ class SiteBuildSinglePostTest extends TestCase
     {
         $post = $this->createPost(['category' => 'Vieja']);
         $this->buildAll();
-        $this->assertFileExists($this->path('category/vieja/page-1.json'));
+        $this->assertFileExists($this->path('data/categories/vieja/page-1.json'));
 
         $newCategory = $this->category('Nueva');
         Post::query()->whereKey($post->id)->update(['category_id' => $newCategory->id]);
 
         $this->assertSame(0, $this->buildPost($post));
-        $this->assertFileDoesNotExist($this->path('category/vieja/page-1.json'));
-        $this->assertFileExists($this->path('category/nueva/page-1.json'));
-        $this->assertFileDoesNotExist($this->path('data/tags/vieja/page-1.json'));
-        $this->assertFileExists($this->path('data/tags/nueva/page-1.json'));
+        $this->assertFileDoesNotExist($this->path('data/categories/vieja/page-1.json'));
+        $this->assertFileExists($this->path('data/categories/nueva/page-1.json'));
+        $this->assertFileDoesNotExist($this->path('data/categories/vieja/page-1.json'));
+        $this->assertFileExists($this->path('data/categories/nueva/page-1.json'));
     }
 
     public function test_cambio_de_slug_elimina_salida_anterior_y_actualiza_portada_y_sitemap(): void
@@ -382,7 +382,7 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertFileExists($this->path('slug-nuevo/index.html'));
         $this->assertFileDoesNotExist($this->path('slug-viejo'));
         $this->assertStringContainsString('/slug-nuevo/', File::get($this->path('index.html')));
-        $this->assertStringContainsString('/slug-nuevo/', File::get($this->path('sitemaps/page-1.xml')));
+        $this->assertStringContainsString('/slug-nuevo/', File::get($this->path('sitemaps/posts-1.xml')));
     }
 
     public function test_published_a_draft_elimina_html_y_estructuras_globales(): void
@@ -396,7 +396,8 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertFileDoesNotExist($this->path('deja-de-publicarse'));
         $this->assertStringNotContainsString('Ya no visible', File::get($this->path('index.html')));
         $this->assertStringNotContainsString('deja-de-publicarse', File::get($this->path('feed.xml')));
-        $this->assertStringNotContainsString('deja-de-publicarse', File::get($this->path('sitemaps/page-1.xml')));
+        $this->assertStringNotContainsString('deja-de-publicarse', File::get($this->path('sitemap.xml')));
+        $this->assertFileDoesNotExist($this->path('sitemaps/posts-1.xml'));
     }
 
     public function test_draft_a_published_crea_html_y_estructuras_globales(): void
@@ -475,7 +476,7 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertSame(0, $this->buildPost($post), Artisan::output());
         $this->assertFileExists($this->path('index.html'));
         $this->assertFileExists($this->path('feed.xml'));
-        $this->assertFileExists($this->path('sitemaps/sitemap-index.xml'));
+        $this->assertFileExists($this->path('sitemap.xml'));
         $this->assertFileExists($this->path('archive/index.html'));
     }
 

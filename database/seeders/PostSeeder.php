@@ -32,7 +32,7 @@ class PostSeeder extends Seeder
                 'meta_description' => 'Un blog estático optimizado para SEO.',
                 'domain' => 'localhost',
                 'subdir' => '/',
-                'dist_path' => '/home/carlos/work/cms/dist',
+                'dist_path' => 'dist',
             ]
         );
 

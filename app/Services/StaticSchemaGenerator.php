@@ -6,26 +6,36 @@ use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
 use App\Support\PostBodyRenderer;
+use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
 class StaticSchemaGenerator
 {
+    private const GENERATED_DIRECTORIES = ['archive', 'category', 'data', 'page', 'sitemaps'];
+
     protected array $categoryPaths = [];
+
+    protected array $menuStructure = [];
 
     public function __construct(
         protected Command $command,
         protected Site $site,
-        protected string $targetFolder
+        protected string $targetFolder,
+        protected StaticViteAssets $staticAssets,
     ) {}
 
     public function build($posts, $pages, $allEntriesLight)
     {
-        view()->share('generatedMenu', '');
         $this->categoryPaths = $this->buildCategoryPaths();
         $publicPath = $this->publicPath();
-        $baseUrl = rtrim((string) $this->site->domain, '/');
+        $baseUrl = $this->baseUrl();
         $fullBaseUrl = $baseUrl.$publicPath;
+        $menuRenderer = new MenuRenderer;
+        $this->menuStructure = $menuRenderer->structure($this->site, 'primary', $publicPath);
+        $menuHtml = $menuRenderer->renderStructure($this->menuStructure, $publicPath ?: '/');
+        $this->putHtml($this->targetFolder.'/menu.html', $menuHtml);
+        File::put($this->targetFolder.'/menu.json', json_encode($this->menuStructure, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
         // ===================================================================
         // 1. 📦 ÍNDICES JSON MAESTROS Y SEGMENTACIÓN (ARCHIVE & CATEGORIES)
@@ -55,11 +65,7 @@ class StaticSchemaGenerator
             ->filter(fn ($e) => $e->type === Post::TYPE_POST && ! empty($e->slug) && $e->created_at)
             ->values();
 
-        if (File::exists($archiveRoot)) {
-            File::deleteDirectory($archiveRoot);
-        }
-
-        File::makeDirectory($archiveRoot, 0755, true);
+        $this->resetGeneratedDirectory($archiveRoot);
 
         $groupedArchive = $archivePosts
             ->groupBy(fn ($e) => $e->created_at->format('Y'))
@@ -70,6 +76,8 @@ class StaticSchemaGenerator
             'site' => $this->site,
             'subdir' => $publicPath,
             'subdirUrl' => $publicPath,
+            'staticAssets' => $this->staticAssets,
+            'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, 'archive/')),
         ])->render());
 
         foreach ($groupedArchive as $year => $yearEntries) {
@@ -86,6 +94,8 @@ class StaticSchemaGenerator
                 'site' => $this->site,
                 'subdir' => $publicPath,
                 'subdirUrl' => $publicPath,
+                'staticAssets' => $this->staticAssets,
+                'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/")),
             ])->render());
 
             foreach ($groupedMonths as $month => $monthEntries) {
@@ -103,6 +113,8 @@ class StaticSchemaGenerator
                     'site' => $this->site,
                     'subdir' => $publicPath,
                     'subdirUrl' => $publicPath,
+                    'staticAssets' => $this->staticAssets,
+                    'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/{$month}/")),
                 ])->render());
 
                 foreach ($groupedDays as $day => $dayEntries) {
@@ -119,17 +131,19 @@ class StaticSchemaGenerator
                         'site' => $this->site,
                         'subdir' => $publicPath,
                         'subdirUrl' => $publicPath,
+                        'staticAssets' => $this->staticAssets,
+                        'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/{$month}/{$day}/")),
                     ])->render());
                 }
             }
         }
 
-        // C) Índices dinámicos de Categorías paginados en JSON puro: /category/{slug}/page-{n}.json
+        // C) Categorías con HTML canónico y JSON de aceleración.
         $homeFirstPagePosts = max((int) config('static_cms.home_first_page_posts', 10), 1);
         $postsPerPage = max((int) config('static_cms.posts_per_home_page', 20), 1);
         $maxHomePages = max((int) config('static_cms.max_home_pages', 20), 1);
         $dataRoot = $this->targetFolder.'/data';
-        $tagsDataRoot = $dataRoot.'/tags';
+        $categoriesDataRoot = $dataRoot.'/categories';
         $categoryRoot = $this->targetFolder.'/category';
         $allPostsForData = $allEntriesLight
             ->filter(fn ($e) => $e->type === Post::TYPE_POST && ! empty($e->slug))
@@ -139,65 +153,21 @@ class StaticSchemaGenerator
             ->groupBy(fn ($entry) => (int) $entry->category_id);
         $serializePost = fn ($e) => $this->serializePost($e, $publicPath);
 
-        if (File::exists($dataRoot)) {
-            File::deleteDirectory($dataRoot);
-        }
-
-        if (File::exists($categoryRoot)) {
-            File::deleteDirectory($categoryRoot);
-        }
-
-        File::makeDirectory($tagsDataRoot, 0755, true);
-        File::makeDirectory($categoryRoot, 0755, true);
-
-        $menuItems = $groupedByCategory
-            ->map(function ($entries) use ($postsPerPage) {
-                $category = $entries->first()->category;
-
-                if (! $category->is_visible) {
-                    return null;
-                }
-
-                return [
-                    'type' => 'category',
-                    'id' => $category->id,
-                    'parent_id' => $category->parent_id,
-                    'title' => $category->name,
-                    'name' => $category->name,
-                    'slug' => $category->slug,
-                    'tag' => $category->slug,
-                    'path' => $this->categoryPath($category),
-                    'count' => $entries->count(),
-                    'totalPages' => (int) ceil($entries->count() / $postsPerPage),
-                ];
-            })
-            ->filter()
-            ->sortBy(fn (array $item) => $item['path'])
-            ->values();
-
-        $pageMenuItems = $pages
-            ->filter(fn ($page) => ! empty($page->slug))
-            ->map(fn ($page) => [
-                'type' => Post::TYPE_PAGE,
-                'title' => $page->title,
-                'name' => $page->title,
-                'slug' => $page->slug,
-                'url' => $this->joinPublicPath($publicPath, "{$page->slug}/"),
-            ])
-            ->values();
-        $navigationItems = $menuItems->concat($pageMenuItems)->values();
+        $this->resetGeneratedDirectory($dataRoot);
+        $this->resetGeneratedDirectory($categoryRoot);
+        File::makeDirectory($categoriesDataRoot, 0755, true);
 
         foreach ($groupedByCategory as $categoryId => $catEntries) {
             $category = $catEntries->first()->category;
             $catSlug = $category->slug;
             $catFolder = $this->targetFolder."/category/{$catSlug}";
-            $tagDataFolder = "{$tagsDataRoot}/{$catSlug}";
+            $categoryDataFolder = "{$categoriesDataRoot}/{$catSlug}";
 
             if (! File::exists($catFolder)) {
                 File::makeDirectory($catFolder, 0755, true);
             }
 
-            File::makeDirectory($tagDataFolder, 0755, true);
+            File::makeDirectory($categoryDataFolder, 0755, true);
 
             $catChunks = $catEntries->chunk($postsPerPage);
             $catTotalPages = $catChunks->count();
@@ -205,16 +175,41 @@ class StaticSchemaGenerator
             foreach ($catChunks as $index => $chunk) {
                 $pageNum = $index + 1;
                 $postsPayload = $chunk->map($serializePost)->values();
-                $chunkData = $postsPayload->toJson();
-                $tagPayload = [
-                    'tag' => $catSlug,
+                $categoryBaseUrl = $this->joinPublicPath($publicPath, "category/{$catSlug}");
+                $categoryJsonBaseUrl = $this->joinPublicPath($publicPath, "data/categories/{$catSlug}");
+                $viewData = [
+                    'category' => $category,
+                    'categoryPath' => $this->categoryPath($category),
+                    'posts' => $postsPayload,
+                    'site' => $this->site,
                     'currentPage' => $pageNum,
                     'totalPages' => $catTotalPages,
+                    'subdirUrl' => $publicPath,
+                    'paginationBaseUrl' => $categoryBaseUrl,
+                    'paginationJsonBaseUrl' => $categoryJsonBaseUrl,
+                    'staticAssets' => $this->staticAssets,
+                    'generatedMenu' => $this->menuHtml($pageNum === 1 ? $categoryBaseUrl.'/' : $categoryBaseUrl."/page/{$pageNum}/"),
+                ];
+                $listingHtml = view('site.partials.listing', $viewData + [
+                    'listingTitle' => $this->categoryPath($category),
+                    'listingKind' => 'category',
+                    'listingDescription' => $category->description,
+                ])->render();
+                $payload = [
+                    'category' => $catSlug,
+                    'currentPage' => $pageNum,
+                    'totalPages' => $catTotalPages,
+                    'canonicalUrl' => $pageNum === 1 ? $categoryBaseUrl.'/' : $categoryBaseUrl."/page/{$pageNum}/",
+                    'title' => $category->name.' — '.($this->site->long_name ?? config('app.name')),
                     'posts' => $postsPayload,
+                    'html' => StaticHtmlCleaner::clean($listingHtml),
                 ];
 
-                File::put($catFolder."/page-{$pageNum}.json", $chunkData);
-                File::put($tagDataFolder."/page-{$pageNum}.json", json_encode($tagPayload));
+                File::put($categoryDataFolder."/page-{$pageNum}.json", json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+                $htmlPath = $pageNum === 1 ? $catFolder.'/index.html' : $catFolder."/page/{$pageNum}/index.html";
+                File::ensureDirectoryExists(dirname($htmlPath));
+                $this->putHtml($htmlPath, view('site.category', $viewData)->render());
             }
 
         }
@@ -225,36 +220,9 @@ class StaticSchemaGenerator
         }
 
         // ===================================================================
-        // 2. GENERAR MENÚ ESTÁTICO HTML Y JSON MAESTRO
+        // 2. 📄 PORTADA CON HTML CANÓNICO Y JSON DE ACELERACIÓN
         // ===================================================================
-        $this->command->comment('   🍴 Generando menús de navegación estáticos...');
-        $menuHtml = view('site.menu', [
-            'items' => $navigationItems,
-            'pages' => $pages,
-            'site' => $this->site,
-            'subdirUrl' => $publicPath,
-        ])->render();
-        $this->putHtml($this->targetFolder.'/menu.html', $menuHtml);
-
-        File::put($this->targetFolder.'/menu.json', $navigationItems->toJson(JSON_PRETTY_PRINT));
-        view()->share('generatedMenu', $menuHtml);
-
-        foreach ($groupedByCategory as $catEntries) {
-            $category = $catEntries->first()->category;
-            $catFolder = $this->targetFolder."/category/{$category->slug}";
-            $this->putHtml($catFolder.'/index.html', view('site.category', [
-                'category' => $category,
-                'categoryPath' => $this->categoryPath($category),
-                'posts' => $catEntries->map($serializePost)->values(),
-                'site' => $this->site,
-                'subdirUrl' => $publicPath,
-            ])->render());
-        }
-
-        // ===================================================================
-        // 3. 📄 PORTADA PRINCIPAL (HTML) Y PAGINACIÓN SUBSIGUIENTE (JSON PURO)
-        // ===================================================================
-        $this->command->comment('   📄 Generando Portada index.html y listados JSON para la SPA...');
+        $this->command->comment('   📄 Generando portada HTML y JSON de navegación progresiva...');
 
         // El universo completo de posts ordenados para la portada
         $allPosts = $allEntriesLight->filter(fn ($e) => $e->type === Post::TYPE_POST)->values();
@@ -268,9 +236,8 @@ class StaticSchemaGenerator
         $pagesToRender = collect([$firstPagePosts])->concat($paginatedPosts)->values();
         $totalPages = $pagesToRender->count();
 
-        // Si existía la estructura vieja de carpetas HTML para las páginas, la limpiamos
         if (File::exists($this->targetFolder.'/page')) {
-            File::deleteDirectory($this->targetFolder.'/page');
+            $this->deleteGeneratedDirectory($this->targetFolder.'/page');
         }
 
         foreach (File::glob($this->targetFolder.'/page-*.json') ?: [] as $stalePageFile) {
@@ -280,29 +247,40 @@ class StaticSchemaGenerator
         foreach ($pagesToRender as $index => $chunkPosts) {
             $currentPage = $index + 1;
             $postsPayload = $chunkPosts->map($serializePost)->values();
+            $homeBaseUrl = $publicPath;
+            $homeJsonBaseUrl = $this->joinPublicPath($publicPath, 'data');
+            $viewData = [
+                'posts' => $postsPayload,
+                'site' => $this->site,
+                'currentPage' => $currentPage,
+                'totalPages' => $totalPages,
+                'subdirUrl' => $publicPath,
+                'paginationBaseUrl' => $homeBaseUrl,
+                'paginationJsonBaseUrl' => $homeJsonBaseUrl,
+                'staticAssets' => $this->staticAssets,
+                'generatedMenu' => $this->menuHtml($currentPage === 1 ? ($publicPath ?: '/') : $this->joinPublicPath($publicPath, "page/{$currentPage}/")),
+            ];
+            $listingHtml = view('site.partials.listing', $viewData + [
+                'listingTitle' => 'Últimos artículos',
+                'listingKind' => 'home',
+            ])->render();
             $pagePayload = [
                 'currentPage' => $currentPage,
                 'totalPages' => $totalPages,
+                'canonicalUrl' => $currentPage === 1 ? ($publicPath ?: '/').($publicPath ? '/' : '') : $this->joinPublicPath($publicPath, "page/{$currentPage}/"),
+                'title' => ($this->site->long_name ?? config('app.name')).' — Carlos Dagorret',
                 'posts' => $postsPayload,
+                'html' => StaticHtmlCleaner::clean($listingHtml),
             ];
 
-            File::put($dataRoot."/page-{$currentPage}.json", json_encode($pagePayload));
+            File::put($dataRoot."/page-{$currentPage}.json", json_encode($pagePayload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
             if ($currentPage === 1) {
-                // La página 1 de la Home siempre es un HTML real masticado para el landing inicial
-                $indexHtml = view('site.index', [
-                    'posts' => $postsPayload,
-                    'site' => $this->site,
-                    'currentPage' => 1,
-                    'totalPages' => $totalPages,
-                    'subdirUrl' => $publicPath,
-                    'dataBaseUrl' => $this->joinPublicPath($publicPath, 'data'),
-                ])->render();
-
-                $this->putHtml($this->targetFolder.'/index.html', $indexHtml);
+                $this->putHtml($this->targetFolder.'/index.html', view('site.index', $viewData)->render());
             } else {
-                // 🚀 De la página 2 en adelante: JSON puros en la raíz de dist para consumo SPA instantáneo
-                File::put($this->targetFolder."/page-{$currentPage}.json", $postsPayload->toJson());
+                $htmlPath = $this->targetFolder."/page/{$currentPage}/index.html";
+                File::ensureDirectoryExists(dirname($htmlPath));
+                $this->putHtml($htmlPath, view('site.index', $viewData)->render());
             }
         }
 
@@ -346,81 +324,11 @@ class StaticSchemaGenerator
         fclose($feedFile);
 
         // ===================================================================
-        // 5. 🗺️ SITEMAP MÚLTIPLE (SITEMAP INDEX + CHUNKS SECUENCIALES)
+        // 5. 🗺️ SITEMAP INDEX + ARCHIVOS POR TIPO Y LOTES
         // ===================================================================
-        $this->command->comment('   🗺️ Generando Sitemap Index y fragmentos masivos...');
-
-        $sitemapsPath = $this->targetFolder.'/sitemaps';
-        $sitemapPerPage = max((int) config('static_cms.sitemap_per_page', 1000), 1);
-        $sitemapEntries = $allEntriesLight
-            ->filter(fn ($entry) => ! empty($entry->slug) && $entry->updated_at)
-            ->values();
-        $sitemapChunks = $sitemapEntries->chunk($sitemapPerPage);
-        $sitemapFilesCreated = [];
-
-        if (File::exists($sitemapsPath)) {
-            File::deleteDirectory($sitemapsPath);
-        }
-
-        File::makeDirectory($sitemapsPath, 0755, true);
-
-        if (File::exists($this->targetFolder.'/sitemap.xml')) {
-            File::delete($this->targetFolder.'/sitemap.xml');
-        }
-
-        foreach (File::glob($this->targetFolder.'/sitemap-*.xml') ?: [] as $staleSitemapFile) {
-            File::delete($staleSitemapFile);
-        }
-
-        if ($sitemapChunks->isEmpty()) {
-            $sitemapChunks = collect([collect()]);
-        }
-
-        foreach ($sitemapChunks as $chunkIndex => $chunkEntries) {
-            $partNumber = $chunkIndex + 1;
-            $fileName = "page-{$partNumber}.xml";
-            $partPath = $sitemapsPath.'/'.$fileName;
-
-            $partFile = fopen($partPath, 'w');
-            fwrite($partFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'.PHP_EOL);
-
-            if ($partNumber === 1) {
-                $homeUrl = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                fwrite($partFile, "    <url><loc>{$homeUrl}</loc><priority>1.0</priority></url>".PHP_EOL);
-            }
-
-            foreach ($chunkEntries as $entry) {
-                $url = htmlspecialchars("{$fullBaseUrl}/{$entry->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                $lastMod = htmlspecialchars($entry->updated_at->toIso8601String(), ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                fwrite($partFile, "    <url><loc>{$url}</loc><lastmod>{$lastMod}</lastmod><priority>0.8</priority></url>".PHP_EOL);
-            }
-
-            fwrite($partFile, '</urlset>'.PHP_EOL);
-            fclose($partFile);
-
-            $sitemapFilesCreated[] = [
-                'name' => $fileName,
-                'lastmod' => now()->toIso8601String(),
-            ];
-        }
-
-        $indexPath = $sitemapsPath.'/sitemap-index.xml';
-        $indexFile = fopen($indexPath, 'w');
-
-        fwrite($indexFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'.PHP_EOL);
-
-        foreach ($sitemapFilesCreated as $sitemapFile) {
-            $sitemapUrl = htmlspecialchars("{$fullBaseUrl}/sitemaps/{$sitemapFile['name']}", ENT_XML1 | ENT_QUOTES, 'UTF-8');
-            $lastMod = htmlspecialchars($sitemapFile['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8');
-
-            fwrite($indexFile, '  <sitemap>'.PHP_EOL);
-            fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>".PHP_EOL);
-            fwrite($indexFile, "    <lastmod>{$lastMod}</lastmod>".PHP_EOL);
-            fwrite($indexFile, '  </sitemap>'.PHP_EOL);
-        }
-
-        fwrite($indexFile, '</sitemapindex>'.PHP_EOL);
-        fclose($indexFile);
+        $this->command->comment('   🗺️ Generando sitemap compuesto por tipos...');
+        $sitemap = (new StaticSitemapGenerator)->generate($this->site, $this->targetFolder);
+        $this->command->comment("   🗺️ {$sitemap['urls']} URLs en {$sitemap['files']} archivos (buffer máximo: {$sitemap['peak_buffer']}).");
 
         // ===================================================================
         // 6. 🚧 404 ESTÁTICO DESACOPLADO
@@ -430,17 +338,74 @@ class StaticSchemaGenerator
         $this->putHtml($this->targetFolder.'/404.html', view('site.404', [
             'site' => $this->site,
             'subdir' => $publicPath,
-            'subdirUrl' => $fullBaseUrl,
-            'fullBaseUrl' => $fullBaseUrl,
-            'useAbsoluteUrls' => true,
+            'subdirUrl' => $publicPath,
+            'staticAssets' => $this->staticAssets,
+            'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, '404.html')),
         ])->render());
 
-        $this->command->info('   ✔️ Arquitectura unificada: SPA JSON Ready, Sitemaps indexados y 404 estático listos.');
+        $this->command->info('   ✔️ Navegación progresiva, sitemap indexado y 404 estático listos.');
     }
 
     protected function putHtml(string $path, string $html): void
     {
         File::put($path, StaticHtmlCleaner::clean($html));
+    }
+
+    protected function menuHtml(string $currentPath): string
+    {
+        return (new MenuRenderer)->renderStructure($this->menuStructure, $currentPath);
+    }
+
+    protected function baseUrl(): string
+    {
+        $domain = rtrim(trim((string) $this->site->domain), '/');
+
+        if (! preg_match('#^https?://#i', $domain)) {
+            $host = strtolower(strtok($domain, '/'));
+            $scheme = $host === 'localhost' || str_starts_with($host, '127.') || str_starts_with($host, '[')
+                ? 'http://'
+                : 'https://';
+            $domain = $scheme.$domain;
+        }
+
+        return $domain;
+    }
+
+    protected function resetGeneratedDirectory(string $path): void
+    {
+        if (File::exists($path) || is_link($path)) {
+            $this->deleteGeneratedDirectory($path);
+        }
+
+        if (! File::makeDirectory($path, 0755, true) && ! File::isDirectory($path)) {
+            throw new \RuntimeException("No se pudo crear el directorio generado [{$path}].");
+        }
+    }
+
+    protected function deleteGeneratedDirectory(string $path): void
+    {
+        $root = realpath($this->targetFolder);
+        $normalizedPath = rtrim(str_replace('\\', '/', $path), '/');
+
+        if ($root === false) {
+            throw new \RuntimeException("No se pudo resolver el dist_path [{$this->targetFolder}].");
+        }
+
+        $root = rtrim(str_replace('\\', '/', $root), '/');
+
+        if (is_link($path)
+            || dirname($normalizedPath) !== $root
+            || ! in_array(basename($normalizedPath), self::GENERATED_DIRECTORIES, true)) {
+            throw new \RuntimeException("Se rechazo la limpieza del directorio generado [{$path}].");
+        }
+
+        $canonicalPath = realpath($path);
+
+        if ($canonicalPath === false
+            || dirname(rtrim(str_replace('\\', '/', $canonicalPath), '/')) !== $root
+            || ! File::deleteDirectory($canonicalPath)) {
+            throw new \RuntimeException("No se pudo limpiar de forma segura el directorio generado [{$path}].");
+        }
     }
 
     protected function serializePost($entry, string $publicPath): array
@@ -459,8 +424,8 @@ class StaticSchemaGenerator
                 'parent_id' => $entry->category->parent_id,
                 'path' => $this->categoryPath($entry->category),
             ] : null,
-            'tags' => collect(explode(',', (string) $entry->keywords))
-                ->map(fn ($tag) => trim($tag))
+            'keywords' => collect(explode(',', (string) $entry->keywords))
+                ->map(fn ($keyword) => trim($keyword))
                 ->filter()
                 ->values()
                 ->all(),

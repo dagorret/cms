@@ -3,6 +3,13 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$sqliteDatabase = (string) env('DB_DATABASE', database_path('database.sqlite'));
+$sqliteUsesMemory = $sqliteDatabase === ':memory:'
+    || str_contains($sqliteDatabase, '?mode=memory')
+    || str_contains($sqliteDatabase, '&mode=memory')
+    || str_starts_with($sqliteDatabase, 'file:');
+$sqliteJournalMode = trim((string) env('DB_JOURNAL_MODE', 'WAL'));
+
 return [
 
     /*
@@ -35,11 +42,15 @@ return [
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
-            'database' => env('DB_DATABASE', database_path('database.sqlite')),
+            'database' => $sqliteDatabase,
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
+            'busy_timeout' => (int) env('DB_BUSY_TIMEOUT', 5000),
+            // WAL is not available for transient in-memory databases. Set an
+            // empty DB_JOURNAL_MODE for a deliberately incompatible filesystem.
+            'journal_mode' => $sqliteUsesMemory || $sqliteJournalMode === ''
+                ? null
+                : strtoupper($sqliteJournalMode),
             'synchronous' => null,
             'transaction_mode' => 'DEFERRED',
         ],

@@ -3,19 +3,19 @@
 @section('title', 'Archivo: ' . $month . '/' . $year)
 
 @section('content')
-    <section class="article-list">
+    <section class="mt-0 border-t-[3px] border-[#171717] pt-[18px] dark:border-[#e8e1d5]">
         <header class="mb-8">
-            <p class="kicker">Archivo mensual</p>
-            <h1 class="my-4 font-serif text-[clamp(2rem,4vw,3.2rem)] font-bold leading-[1.02] tracking-[-.045em] text-[#171717]">Archivo: {{ $month }} / {{ $year }}</h1>
-            <p class="text-[1.05rem] leading-[1.68] text-[#333333]">Días con actividad editorial publicada.</p>
+            <p class="font-sans text-[.76rem] font-bold uppercase tracking-[.14em] text-[#0f4c5c]">Archivo mensual</p>
+            <h1 class="my-4 font-serif text-[clamp(2rem,4vw,3.2rem)] font-bold leading-[1.02] tracking-[-.045em] text-[#171717] dark:text-[#f5f0e7]">Archivo: {{ $month }} / {{ $year }}</h1>
+            <p class="text-[1.05rem] leading-[1.68] text-[#333333] dark:text-[#cbc4b8]">Días con actividad editorial publicada.</p>
         </header>
 
         <ol>
             @foreach($days as $day => $count)
-                <li class="archive-item">
-                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/{{ $day }}/index.html" class="flex items-center justify-between gap-6 decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c]">
+                <li class="border-b border-[#d8d0c3] py-[18px] dark:border-[#4a4640]">
+                    <a href="{{ $subdirUrl }}/archive/{{ $year }}/{{ $month }}/{{ $day }}/index.html" class="flex items-center justify-between gap-6 decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c] max-[900px]:items-start dark:hover:text-[#8fc3cf]">
                         <span class="font-serif text-[1.55rem] font-bold leading-[1.12] tracking-[-.03em]">Día {{ $day }}</span>
-                        <span class="meta">🗂️ {{ $count }} publicaciones</span>
+                        <span class="font-sans text-[.86rem] text-[#66615a] dark:text-[#aaa298]">🗂️ {{ $count }} publicaciones</span>
                     </a>
                 </li>
             @endforeach

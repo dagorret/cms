@@ -5,248 +5,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', $site->long_name ?? $site->name ?? 'Notas') — Carlos Dagorret</title>
     <meta name="description" content="{{ $site->description ?? $site->meta_description ?? 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.' }}">
-
-    <style>
-        :root {
-            --bg: #f7f3eb;
-            --paper: #fffaf2;
-            --ink: #171717;
-            --muted: #66615a;
-            --line: #d8d0c3;
-            --accent: #0f4c5c;
-            --accent-soft: #dfeff0;
-            --gold: #8a6f2a;
-            --max: 1180px;
-        }
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--ink);
-            font-family: Georgia, "Times New Roman", serif;
-            line-height: 1.68;
-            -webkit-font-smoothing: antialiased;
-            text-rendering: optimizeLegibility;
-        }
-        a {
-            color: inherit;
-            text-decoration-color: rgba(15, 76, 92, .35);
-            text-underline-offset: 3px;
-        }
-        .site-header {
-            border-bottom: 1px solid var(--line);
-            padding: 22px 24px 18px;
-            background: rgba(247, 243, 235, .96);
-            backdrop-filter: blur(6px);
-        }
-        .header-inner {
-            max-width: var(--max);
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            gap: 24px;
-            align-items: end;
-        }
-        .brand {
-            font-size: clamp(2rem, 5vw, 4.5rem);
-            line-height: .9;
-            letter-spacing: -.06em;
-            font-weight: 700;
-        }
-        .tagline {
-            max-width: 520px;
-            color: var(--muted);
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            font-size: .95rem;
-        }
-        .main-nav {
-            max-width: var(--max);
-            margin: 14px auto 0;
-            display: flex;
-            gap: 18px;
-            flex-wrap: wrap;
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            font-size: .86rem;
-            text-transform: uppercase;
-            letter-spacing: .08em;
-        }
-        .container {
-            max-width: 768px;
-            margin: 0 auto;
-            padding: 28px 24px;
-        }
-        .kicker {
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            color: var(--accent);
-            font-size: .76rem;
-            font-weight: 700;
-            letter-spacing: .14em;
-            text-transform: uppercase;
-        }
-        .article-list {
-            margin-top: 0;
-            border-top: 3px solid var(--ink);
-            padding-top: 18px;
-        }
-        .article-item {
-            display: grid;
-            grid-template-columns: 160px 1fr;
-            gap: 24px;
-            padding: 18px 0;
-            border-bottom: 1px solid var(--line);
-        }
-        .article-item h2 {
-            margin: 0 0 4px;
-            font-size: 1.55rem;
-            line-height: 1.12;
-            letter-spacing: -.03em;
-        }
-        .feed-item {
-            padding: 2.25rem 0;
-            border-bottom: 1px solid var(--line);
-        }
-        .feed-item h2 {
-            margin: .65rem 0 .85rem;
-            font-size: clamp(1.875rem, 4vw, 2.25rem);
-            line-height: 1.04;
-            letter-spacing: -.045em;
-        }
-        .archive-item {
-            padding: 18px 0;
-            border-bottom: 1px solid var(--line);
-        }
-        .archive-item a,
-        a.archive-item {
-            display: flex;
-            justify-content: space-between;
-            gap: 24px;
-            align-items: center;
-        }
-        .meta {
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            color: var(--muted);
-            font-size: .86rem;
-        }
-        .site-footer {
-            border-top: 1px solid var(--line);
-            padding: 30px 24px;
-            color: var(--muted);
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            font-size: .9rem;
-        }
-        .footer-inner {
-            max-width: var(--max);
-            margin: 0 auto;
-        }
-        .page-btn {
-            border: 1px solid var(--line);
-            background: transparent;
-            color: var(--muted);
-            cursor: pointer;
-            font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-            font-size: .86rem;
-            min-width: 2.25rem;
-            padding: .45rem .7rem;
-            transition: background-color .15s ease, color .15s ease, border-color .15s ease;
-        }
-        .page-btn:hover {
-            background: var(--accent-soft);
-            border-color: rgba(15, 76, 92, .35);
-            color: var(--accent);
-        }
-        .page-btn.active {
-            background: var(--ink);
-            border-color: var(--ink);
-            color: var(--paper);
-            cursor: default;
-        }
-        .page-btn:disabled {
-            color: #a19a90;
-            cursor: not-allowed;
-            opacity: .62;
-        }
-        .page-btn:disabled:hover {
-            background: transparent;
-            border-color: var(--line);
-        }
-        @media (max-width: 900px) {
-            .header-inner,
-            .article-item {
-                display: block;
-            }
-            .archive-item a,
-            a.archive-item {
-                align-items: flex-start;
-            }
-        }
-    </style>
+    <script>
+        (() => { let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const dark = value === 'dark' || (value !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
+    </script>
 
     @php
         $configuredSubdir = trim((string) ($site->subdir ?? ''), '/');
         $publicPath = ($configuredSubdir === '' || $configuredSubdir === 'dist') ? '' : '/' . $configuredSubdir;
         $subdirUrl = $subdirUrl ?? ($subdir ?? $publicPath);
         $homeUrl = $subdirUrl === '' ? '/' : rtrim($subdirUrl, '/') . '/';
-        $useAbsoluteUrls = $useAbsoluteUrls ?? false;
-        $assetBaseUrl = rtrim($fullBaseUrl ?? $subdirUrl ?? '', '/');
-        $viteManifestPath = public_path('build/manifest.json');
-        $viteManifest = ($useAbsoluteUrls && file_exists($viteManifestPath))
-            ? json_decode(file_get_contents($viteManifestPath), true)
-            : [];
-        $viteCss = $viteManifest['resources/css/app.css']['file'] ?? null;
-        $viteJs = $viteManifest['resources/js/app.js']['file'] ?? null;
         $generatedMenu = trim((string) ($generatedMenu ?? ''));
+        if ($generatedMenu === '' && isset($site)) {
+            $generatedMenu = app(\App\Services\MenuRenderer::class)->render($site, 'primary', $publicPath);
+        }
     @endphp
 
-    @if($useAbsoluteUrls && $assetBaseUrl && $viteCss)
-        <link rel="stylesheet" href="{{ $assetBaseUrl }}/build/{{ $viteCss }}">
-        @if($viteJs)
-            <script type="module" src="{{ $assetBaseUrl }}/build/{{ $viteJs }}"></script>
-        @endif
-    @elseif(!app()->runningInConsole())
+    @if(isset($staticAssets) && $staticAssets instanceof \App\Support\StaticViteAssets)
+        @foreach($staticAssets->stylesheetUrls() as $stylesheetUrl)
+            <link rel="stylesheet" href="{{ $stylesheetUrl }}">
+        @endforeach
+        @foreach($staticAssets->scriptUrls() as $scriptUrl)
+            <script type="module" src="{{ $scriptUrl }}"></script>
+        @endforeach
+    @else
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
 
-    <link rel="stylesheet" href="/vendor/katex/katex.min.css">
-    <script defer src="/vendor/katex/katex.min.js"></script>
+    <link rel="stylesheet" href="{{ $subdirUrl }}/vendor/katex/katex.min.css">
+    <script defer src="{{ $subdirUrl }}/vendor/katex/katex.min.js"></script>
 </head>
-<body class="m-0 bg-[#f7f3eb] font-serif text-[#171717] antialiased [text-rendering:optimizeLegibility]">
-    <header class="site-header border-b border-[#d8d0c3] bg-[#f7f3eb]/95 px-6 pb-[18px] pt-[22px] backdrop-blur">
-        <div class="header-inner mx-auto flex max-w-[1180px] items-end justify-between gap-6 max-[900px]:block">
+<body data-public-base-path="{{ $subdirUrl }}" class="m-0 bg-[#f7f3eb] font-serif leading-[1.68] text-[#171717] antialiased [text-rendering:optimizeLegibility] [&_a]:text-inherit [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] dark:bg-[#171717] dark:text-[#e8e1d5] dark:[&_a]:decoration-[#8fc3cf]/50">
+    <header class="border-b border-[#d8d0c3] bg-[#f7f3eb]/95 px-6 pb-[18px] pt-[22px] backdrop-blur dark:border-[#4a4640] dark:bg-[#171717]/95">
+        <div class="mx-auto flex max-w-[1180px] items-end justify-between gap-6 max-[900px]:block">
             <div>
-                <a href="{{ $homeUrl }}" class="brand font-serif text-[clamp(2rem,5vw,4.5rem)] font-bold leading-[.9] tracking-[-.06em] text-[#171717] decoration-[#0f4c5c]/35 underline-offset-[3px]">
+                <a href="{{ $homeUrl }}" class="font-serif text-[clamp(2rem,5vw,4.5rem)] font-bold leading-[.9] tracking-[-.06em] text-[#171717] decoration-[#0f4c5c]/35 underline-offset-[3px] dark:text-[#f5f0e7]">
                     Carlos Dagorret
                 </a>
             </div>
 
-            <p class="tagline max-w-[520px] font-sans text-[.95rem] leading-6 text-[#66615a] max-[900px]:mt-4">
+            <p class="max-w-[520px] font-sans text-[.95rem] leading-6 text-[#66615a] max-[900px]:mt-4 dark:text-[#aaa298]">
                 {{ $site->description ?? $site->meta_description ?? 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.' }}
             </p>
         </div>
 
         <div class="mx-auto mt-[14px] flex max-w-[1180px] items-center justify-between gap-6 max-[900px]:items-start max-[900px]:gap-4">
-            <nav id="spa-menu" class="main-nav flex flex-wrap gap-[18px] font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] [&_a:hover]:text-[#0f4c5c]">
+            <nav id="spa-menu" aria-label="Navegación principal" class="mx-auto mt-[14px] flex max-w-[1180px] flex-wrap gap-[18px] font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] [&_a:hover]:text-[#0f4c5c] dark:text-[#e8e1d5] dark:[&_a:hover]:text-[#8fc3cf]">
                 @if($generatedMenu !== '')
                     {!! $generatedMenu !!}
                 @else
-                    <a href="{{ $homeUrl }}" data-tag="">Inicio</a>
+                    <a href="{{ $homeUrl }}">Inicio</a>
                     <a href="{{ $subdirUrl }}/sobre/">Sobre</a>
                 @endif
             </nav>
 
-            <nav class="flex shrink-0 items-center gap-3 font-sans text-[.78rem] uppercase tracking-[.08em] text-[#66615a] max-[700px]:hidden">
-                <a href="https://github.com/dagorret" rel="me noopener" class="hover:text-[#0f4c5c]">GitHub</a>
-                <a href="{{ $subdirUrl }}/feed.xml" class="hover:text-[#0f4c5c]">RSS</a>
-                <button type="button" class="border border-[#d8d0c3] px-2 py-1 text-[#66615a]" aria-label="Modo oscuro">◐</button>
-            </nav>
+            <button id="theme-toggle" type="button" class="shrink-0 border border-[#d8d0c3] px-2 py-1 font-sans text-[.78rem] text-[#66615a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4c5c] dark:border-[#5d5750] dark:text-[#c5bdb2]" aria-label="Usar modo oscuro" aria-pressed="false">◐</button>
         </div>
     </header>
 
-    <main class="container mx-auto max-w-3xl px-6 py-8">
+    <main class="mx-auto max-w-3xl px-6 py-8">
         @yield('content')
     </main>
 
-    <footer class="site-footer border-t border-[#d8d0c3] px-6 py-[30px] font-sans text-[.9rem] text-[#66615a]">
-        <div class="footer-inner mx-auto max-w-[1180px]">
+    <footer class="border-t border-[#d8d0c3] px-6 py-[30px] font-sans text-[.9rem] text-[#66615a] dark:border-[#4a4640] dark:text-[#aaa298]">
+        <div class="mx-auto max-w-[1180px]">
             <p>¿Comentarios, correcciones o referencias? <a href="mailto:dagorret@gmail.com" class="decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c]">Escribime por correo</a>.</p>
             <p class="mt-3">
                 <a href="https://github.com/dagorret" class="hover:text-[#0f4c5c]">GitHub</a> ·
@@ -258,7 +79,7 @@
         </div>
     </footer>
 
-    <script defer src="/vendor/katex/contrib/auto-render.min.js"
+    <script defer src="{{ $subdirUrl }}/vendor/katex/contrib/auto-render.min.js"
         onload="renderMathInElement(document.body, {
             delimiters: [
                 {left: '$$', right: '$$', display: true},

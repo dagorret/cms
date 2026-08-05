@@ -14,6 +14,8 @@ class StressTestSeeder extends Seeder
 {
     public function run(): void
     {
+        // Ejecutar solo de forma explícita con --class=StressTestSeeder.
+        // Nunca debe formar parte de DatabaseSeeder, tests comunes o builds.
         // 🔑 1. Asegurar que exista el usuario administrador en el sistema
         $this->command->warn('👤 Verificando usuario administrador...');
         $user = User::firstOrCreate(
@@ -34,7 +36,7 @@ class StressTestSeeder extends Seeder
                 'meta_description' => 'Un sitio de pruebas volumétricas para el motor estático tipo NASA.',
                 'domain' => 'https://ensayos.test',
                 'subdir' => null,
-                'dist_path' => base_path('dist/ensayos'),
+                'dist_path' => 'dist/ensayos',
             ]
         );
 

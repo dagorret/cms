@@ -29,4 +29,9 @@ class Site extends Model
     {
         return $this->hasMany(Category::class);
     }
+
+    public function menus(): HasMany
+    {
+        return $this->hasMany(Menu::class);
+    }
 }

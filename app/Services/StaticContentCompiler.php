@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Post;
 use App\Models\Site;
+use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
@@ -16,14 +17,15 @@ class StaticContentCompiler
         protected Site $site,
         protected string $targetFolder,
         protected bool $force,
-        protected bool $resource
+        protected bool $resource,
+        protected StaticViteAssets $staticAssets,
     ) {}
 
     public function compile($entries)
     {
         $publicPath = $this->publicPath();
-        $menuPath = $this->targetFolder.'/menu.html';
-        $generatedMenu = File::isFile($menuPath) ? File::get($menuPath) : '';
+        $menuRenderer = new MenuRenderer;
+        $menuStructure = $menuRenderer->structure($this->site, 'primary', $publicPath);
 
         foreach ($entries as $entry) {
             if (empty($entry->slug)) {
@@ -48,7 +50,8 @@ class StaticContentCompiler
                 'site' => $this->site,
                 'subdir' => $publicPath,
                 'subdirUrl' => $publicPath,
-                'generatedMenu' => $generatedMenu,
+                'generatedMenu' => $menuRenderer->renderStructure($menuStructure, rtrim($publicPath, '/').'/'.$entry->slug.'/'),
+                'staticAssets' => $this->staticAssets,
             ])->render();
 
             $html = StaticHtmlCleaner::clean($html);

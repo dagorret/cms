@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\Menu;
 use App\Models\Post;
 use App\Models\Site;
 use App\Services\StaticContentCompiler;
+use App\Services\StaticDistPathResolver;
 use App\Services\StaticSchemaGenerator;
+use App\Services\StaticViteAssetPublisher;
+use App\Services\StaticViteAssetResolver;
+use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
@@ -38,6 +43,12 @@ class SiteBuildCommand extends Command
 
     protected $description = 'Orquestador modular tipo NASA con incrementalidad real por Base de Datos y Cursor';
 
+    protected ?StaticViteAssets $staticAssets = null;
+
+    protected ?string $viteBuildPath = null;
+
+    protected ?string $staticOutputSignature = null;
+
     public function handle(): int
     {
         $siteIdentifier = trim((string) $this->argument('site_id'));
@@ -49,6 +60,10 @@ class SiteBuildCommand extends Command
             $section = $this->resolveScope((string) $this->option('scope'));
             $postId = $this->resolvePostId();
             $targetFolder = $this->resolveDistPath($site);
+            $viteResolver = new StaticViteAssetResolver;
+            $this->staticAssets = $viteResolver->resolve($this->publicPath($site));
+            $this->viteBuildPath = $viteResolver->buildPath();
+            $this->staticOutputSignature = $this->calculateStaticOutputSignature($site);
             $this->ensureBuildDirectory($targetFolder);
         } catch (RuntimeException $exception) {
             $this->error('❌ '.$exception->getMessage());
@@ -71,13 +86,20 @@ class SiteBuildCommand extends Command
             return $this->compileSinglePost($site, $targetFolder, $postId, $resource);
         }
 
-        if ($force && $section !== 'logo') {
-            $this->warn('🧹 Opcion --force activada. Limpiando cache anterior y forzando rebuild completo...');
-            File::cleanDirectory($targetFolder);
-        }
+        try {
+            if ($force && $section !== 'logo') {
+                $this->warn('🧹 Opcion --force activada. Invalidando la firma y forzando rebuild completo...');
+                $this->cleanDistForForcedBuild($targetFolder);
+            }
 
-        $this->publishKatexAssets($targetFolder);
-        $this->synchronizePublishedEntryFolders($site, $targetFolder);
+            $this->publishKatexAssets($targetFolder);
+            $this->synchronizePublishedEntryFolders($site, $targetFolder);
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->error('❌ Error al preparar la salida estatica: '.$exception->getMessage());
+
+            return Command::FAILURE;
+        }
 
         if ($section === 'logo') {
             try {
@@ -99,13 +121,25 @@ class SiteBuildCommand extends Command
         // ===================================================================
         $recoverMissingEntryOutputs = ! $force
             && $this->hasMissingPublishedEntryOutput($site, $targetFolder, $section);
-        $rebuildAllEntries = $force || $recoverMissingEntryOutputs;
+        $staticOutputChanged = $this->staticOutputSignatureChanged($targetFolder);
+        $rebuildAllEntries = $force || $recoverMissingEntryOutputs || $staticOutputChanged;
 
         if ($recoverMissingEntryOutputs) {
             $this->warn('⚠️  La BD marca el contenido como compilado, pero faltan HTML individuales. Se reconstruyen las entradas publicadas.');
         }
 
-        $compiler = new StaticContentCompiler($this, $site, $targetFolder, $rebuildAllEntries, $resource);
+        if ($staticOutputChanged && ! $force) {
+            $this->warn('⚠️  Cambio el manifest de Vite o una plantilla publica. Se reconstruyen las entradas para mantener referencias de assets coherentes.');
+        }
+
+        $compiler = new StaticContentCompiler(
+            $this,
+            $site,
+            $targetFolder,
+            $rebuildAllEntries,
+            $resource,
+            $this->resolvedStaticAssets(),
+        );
 
         // Conteo base condicional para saber el trabajo pendiente real
         $totalEntries = $this->publishedSitePosts($site)
@@ -178,14 +212,15 @@ class SiteBuildCommand extends Command
         // ===================================================================
         // 📦 ETAPA 2: ESTRUCTURAS GLOBALES (Se actualizan siempre rápido)
         // ===================================================================
-        $this->regenerateGlobalStructures($site, $targetFolder);
-
         try {
+            $this->regenerateGlobalStructures($site, $targetFolder);
             $this->processMediaAssets($targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
+            $this->publishViteAssets($targetFolder);
+            $this->writeStaticOutputSignature($targetFolder);
         } catch (Throwable $exception) {
             report($exception);
-            $this->error('❌ Error al procesar medios: '.$exception->getMessage());
+            $this->error('❌ Error al finalizar la generacion estatica: '.$exception->getMessage());
 
             return Command::FAILURE;
         }
@@ -209,6 +244,14 @@ class SiteBuildCommand extends Command
             ->with('category.parent')
             ->select($this->entryColumns())
             ->first();
+
+        if ($post
+            && $this->staticOutputSignatureChanged($targetFolder)
+            && $this->hasManagedEntryOtherThan($targetFolder, (string) $post->slug)) {
+            $this->error('❌ Cambio el manifest de Vite o una plantilla publica. Ejecuta un build completo antes de continuar con builds incrementales.');
+
+            return Command::FAILURE;
+        }
 
         if (! $post) {
             $inactivePost = $this->siteScopedPosts($site)
@@ -234,7 +277,14 @@ class SiteBuildCommand extends Command
             return Command::FAILURE;
         }
 
-        $compiler = new StaticContentCompiler($this, $site, $targetFolder, true, $resource);
+        $compiler = new StaticContentCompiler(
+            $this,
+            $site,
+            $targetFolder,
+            true,
+            $resource,
+            $this->resolvedStaticAssets(),
+        );
         $compiler->compile(collect([$post]));
 
         Post::whereKey($post->getKey())->update([
@@ -275,7 +325,12 @@ class SiteBuildCommand extends Command
         $posts = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_POST);
         $pages = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_PAGE);
 
-        $generator = new StaticSchemaGenerator($this, $site, $targetFolder);
+        $generator = new StaticSchemaGenerator(
+            $this,
+            $site,
+            $targetFolder,
+            $this->resolvedStaticAssets(),
+        );
         $generator->build($posts, $pages, $allEntriesLight);
     }
 
@@ -285,6 +340,8 @@ class SiteBuildCommand extends Command
             $this->regenerateGlobalStructures($site, $targetFolder);
             $this->processMediaAssets($targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
+            $this->publishViteAssets($targetFolder);
+            $this->writeStaticOutputSignature($targetFolder);
         } catch (Throwable $exception) {
             report($exception);
             $this->error('❌ Error al finalizar la compilacion incremental: '.$exception->getMessage());
@@ -371,19 +428,11 @@ class SiteBuildCommand extends Command
             throw new RuntimeException("El sitio [{$site->short_name}] no tiene dist_path configurado.");
         }
 
-        if (! $this->isAbsolutePath($distPath)) {
-            throw new RuntimeException("El dist_path del sitio [{$site->short_name}] debe ser una ruta absoluta. Valor recibido: {$distPath}");
+        try {
+            return (new StaticDistPathResolver)->resolve($distPath);
+        } catch (RuntimeException $exception) {
+            throw new RuntimeException("dist_path invalido para [{$site->short_name}]: {$exception->getMessage()}", previous: $exception);
         }
-
-        if ($this->isFilesystemRoot($distPath)) {
-            throw new RuntimeException('dist_path no puede apuntar a la raiz del filesystem.');
-        }
-
-        if ($this->isSamePath($distPath, public_path())) {
-            throw new RuntimeException('dist_path no puede apuntar directamente a public_path(). Usa una ruta aislada por sitio.');
-        }
-
-        return $distPath;
     }
 
     protected function ensureBuildDirectory(string $distPath): void
@@ -449,6 +498,12 @@ class SiteBuildCommand extends Command
         $deleted = 0;
 
         foreach (File::directories($targetFolder) as $directory) {
+            if (is_link($directory)) {
+                $this->warn("⚠️  Se omite enlace simbolico durante la limpieza de entradas [{$directory}].");
+
+                continue;
+            }
+
             $manifest = $this->entryManifest($directory);
 
             if (! $this->isManagedEntryDirectory($directory, $manifest)) {
@@ -465,7 +520,7 @@ class SiteBuildCommand extends Command
                 continue;
             }
 
-            $this->cleanMediaDestination($directory);
+            $this->deleteManagedEntryDirectory($targetFolder, $directory);
             $deleted++;
         }
 
@@ -490,17 +545,8 @@ class SiteBuildCommand extends Command
 
     protected function isManagedEntryDirectory(string $directory, array $manifest): bool
     {
-        if ($manifest !== []) {
-            return true;
-        }
-
-        $directoryName = basename($directory);
-
-        if (in_array($directoryName, self::STRUCTURAL_DIRECTORIES, true)) {
-            return false;
-        }
-
-        return File::isFile($this->joinPath($directory, 'index.html'));
+        return $manifest !== []
+            && ! in_array(basename($directory), self::STRUCTURAL_DIRECTORIES, true);
     }
 
     protected function entryManifest(string $directory): array
@@ -568,7 +614,11 @@ class SiteBuildCommand extends Command
             return false;
         }
 
-        $this->cleanMediaDestination($entryFolder);
+        if ($this->entryManifest($entryFolder) === []) {
+            return false;
+        }
+
+        $this->deleteManagedEntryDirectory($targetFolder, $entryFolder);
 
         return true;
     }
@@ -604,6 +654,200 @@ class SiteBuildCommand extends Command
         }
 
         return $columns;
+    }
+
+    protected function publicPath(Site $site): string
+    {
+        $path = trim((string) $site->subdir, '/');
+
+        return ($path === '' || $path === 'dist') ? '' : '/'.$path;
+    }
+
+    protected function resolvedStaticAssets(): StaticViteAssets
+    {
+        if (! $this->staticAssets) {
+            throw new RuntimeException('Los assets estaticos de Vite no fueron resueltos.');
+        }
+
+        return $this->staticAssets;
+    }
+
+    protected function calculateStaticOutputSignature(Site $site): string
+    {
+        if (! $this->viteBuildPath) {
+            throw new RuntimeException('No se resolvio el directorio de build de Vite.');
+        }
+
+        $manifestPath = $this->viteBuildPath.'/manifest.json';
+        $context = hash_init('sha256');
+        hash_update_file($context, $manifestPath);
+
+        hash_update($context, json_encode([
+            'public_path' => $this->publicPath($site),
+            'domain' => rtrim((string) $site->domain, '/'),
+            'pagination' => [
+                'home_first_page_posts' => max((int) config('static_cms.home_first_page_posts', 10), 1),
+                'posts_per_home_page' => max((int) config('static_cms.posts_per_home_page', 20), 1),
+                'max_home_pages' => max((int) config('static_cms.max_home_pages', 20), 1),
+            ],
+            'menus' => [
+                'locations' => config('static_cms.menu_locations', []),
+                'max_depth' => max((int) config('static_cms.menu_max_depth', 3), 1),
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        if (Schema::hasTable('menus') && Schema::hasTable('menu_items')) {
+            $menus = Menu::query()
+                ->where('site_id', $site->getKey())
+                ->with(['items' => fn ($query) => $query->orderBy('id')])
+                ->orderBy('id')
+                ->get()
+                ->map(fn ($menu) => [
+                    'id' => $menu->id,
+                    'name' => $menu->name,
+                    'slug' => $menu->slug,
+                    'location' => $menu->location,
+                    'is_active' => $menu->is_active,
+                    'items' => $menu->items->map(fn ($item) => [
+                        'id' => $item->id,
+                        'parent_id' => $item->parent_id,
+                        'label' => $item->label,
+                        'type' => $item->type,
+                        'category_id' => $item->category_id,
+                        'post_id' => $item->post_id,
+                        'url' => $item->url,
+                        'target' => $item->target,
+                        'rel' => $item->rel,
+                        'sort_order' => $item->sort_order,
+                        'is_active' => $item->is_active,
+                    ])->all(),
+                ])->all();
+            hash_update($context, json_encode($menus, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        }
+
+        $viewFiles = collect(File::allFiles(resource_path('views/site')))
+            ->sortBy(fn ($file) => $file->getPathname())
+            ->values();
+
+        foreach ($viewFiles as $viewFile) {
+            hash_update($context, $viewFile->getRelativePathname());
+            hash_update_file($context, $viewFile->getPathname());
+        }
+
+        return hash_final($context);
+    }
+
+    protected function staticOutputSignatureChanged(string $targetFolder): bool
+    {
+        $signaturePath = $this->joinPath($targetFolder, '.cms-faro-build.json');
+
+        if (! File::isFile($signaturePath) || ! $this->staticOutputSignature) {
+            return true;
+        }
+
+        try {
+            $metadata = json_decode(File::get($signaturePath), true, flags: JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return true;
+        }
+
+        return ! is_array($metadata)
+            || ! hash_equals($this->staticOutputSignature, (string) ($metadata['signature'] ?? ''));
+    }
+
+    protected function writeStaticOutputSignature(string $targetFolder): void
+    {
+        if (! $this->staticOutputSignature) {
+            throw new RuntimeException('No se calculo la firma de la salida estatica.');
+        }
+
+        File::put(
+            $this->joinPath($targetFolder, '.cms-faro-build.json'),
+            json_encode([
+                'signature' => $this->staticOutputSignature,
+                'built_at' => now()->toIso8601String(),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+    }
+
+    protected function hasManagedEntryOtherThan(string $targetFolder, string $slug): bool
+    {
+        foreach (File::directories($targetFolder) as $directory) {
+            if (is_link($directory)
+                || in_array(basename($directory), self::STRUCTURAL_DIRECTORIES, true)
+                || $this->entryManifest($directory) === []) {
+                continue;
+            }
+
+            if (basename($directory) !== trim($slug, '/\\')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function publishViteAssets(string $targetFolder): void
+    {
+        if (! $this->viteBuildPath) {
+            throw new RuntimeException('No se resolvio el directorio de build de Vite.');
+        }
+
+        $destination = (new StaticViteAssetPublisher)->publish($this->viteBuildPath, $targetFolder);
+
+        foreach (array_merge(
+            $this->resolvedStaticAssets()->stylesheets,
+            $this->resolvedStaticAssets()->scripts,
+        ) as $relativePath) {
+            if (! File::isFile($destination.'/'.$relativePath)) {
+                throw new RuntimeException("El asset publicado no existe [{$destination}/{$relativePath}].");
+            }
+        }
+
+        $this->comment("   ✔️ Build de Vite publicado atomicamente en {$destination}");
+    }
+
+    protected function cleanDistForForcedBuild(string $targetFolder): void
+    {
+        $root = realpath($targetFolder);
+
+        if ($root === false || is_link($targetFolder) || ! File::isDirectory($root)) {
+            throw new RuntimeException("No se puede limpiar un dist_path no canonico o simbolico [{$targetFolder}].");
+        }
+
+        $signaturePath = rtrim($root, '/').'/.cms-faro-build.json';
+
+        if (is_link($signaturePath)) {
+            throw new RuntimeException("Se rechazo una firma simbolica dentro de dist [{$signaturePath}].");
+        }
+
+        if (File::isFile($signaturePath) && ! File::delete($signaturePath)) {
+            throw new RuntimeException("No se pudo invalidar la firma estatica [{$signaturePath}].");
+        }
+    }
+
+    protected function deleteManagedEntryDirectory(string $targetFolder, string $directory): void
+    {
+        $root = realpath($targetFolder);
+        $canonicalDirectory = realpath($directory);
+
+        if ($root === false || $canonicalDirectory === false) {
+            throw new RuntimeException("No se pudo resolver la ruta canonica antes de limpiar [{$directory}].");
+        }
+
+        $root = rtrim(str_replace('\\', '/', $root), '/');
+        $canonicalDirectory = rtrim(str_replace('\\', '/', $canonicalDirectory), '/');
+
+        if (is_link($directory)
+            || dirname($canonicalDirectory) !== $root
+            || ! str_starts_with($canonicalDirectory.'/', $root.'/')
+            || in_array(basename($canonicalDirectory), self::STRUCTURAL_DIRECTORIES, true)) {
+            throw new RuntimeException("Se rechazo la eliminacion de una salida no administrada [{$directory}].");
+        }
+
+        if (! File::deleteDirectory($canonicalDirectory)) {
+            throw new RuntimeException("No se pudo eliminar la entrada administrada [{$canonicalDirectory}].");
+        }
     }
 
     /**
@@ -808,32 +1052,6 @@ class SiteBuildCommand extends Command
     protected function joinPath(string $basePath, string $path): string
     {
         return rtrim($basePath, '/\\').'/'.ltrim($path, '/\\');
-    }
-
-    protected function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, '/')
-            || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1
-            || str_starts_with($path, '\\\\');
-    }
-
-    protected function isFilesystemRoot(string $path): bool
-    {
-        $normalized = rtrim(str_replace('\\', '/', $path), '/');
-
-        return $normalized === '' || preg_match('/^[A-Za-z]:$/', $normalized) === 1;
-    }
-
-    protected function isSamePath(string $firstPath, string $secondPath): bool
-    {
-        return rtrim($this->normalizePath($firstPath), '/\\') === rtrim($this->normalizePath($secondPath), '/\\');
-    }
-
-    protected function normalizePath(string $path): string
-    {
-        $realPath = realpath($path);
-
-        return $realPath !== false ? $realPath : $path;
     }
 
     protected function cleanMediaDestination(string $destinationPath): void
