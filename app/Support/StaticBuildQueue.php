@@ -20,6 +20,23 @@ final class StaticBuildQueue
             return false;
         }
 
+        return self::enqueuePostBuild($post);
+    }
+
+    public static function queuePostSynchronization(Post $post): bool
+    {
+        $wasPublished = ($post->getPrevious()['status'] ?? null) === Post::STATUS_PUBLISHED;
+        $hasPreviousStaticOutput = filled($post->getRawOriginal('static_built_at'));
+
+        if (! $post->isPublished() && ! $wasPublished && ! $hasPreviousStaticOutput) {
+            return false;
+        }
+
+        return self::enqueuePostBuild($post);
+    }
+
+    private static function enqueuePostBuild(Post $post): bool
+    {
         $siteCode = self::resolveSiteCode($post);
 
         if ($siteCode === null) {
@@ -54,21 +71,44 @@ final class StaticBuildQueue
         }
     }
 
+    public static function queuePostSynchronizationQuietly(Post $post): bool
+    {
+        try {
+            return self::queuePostSynchronization($post);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
+    }
+
     public static function resolveSiteCode(Post $post): ?string
     {
-        if ($post->relationLoaded('site') && $post->site) {
-            return $post->site->short_name;
-        }
-
         if (! $post->site_id) {
             return null;
         }
 
-        $siteCode = Site::query()
-            ->where('short_name', $post->site_id)
-            ->orWhere('id', $post->site_id)
-            ->value('short_name');
+        $site = $post->relationLoaded('site') ? $post->site : null;
 
-        return $siteCode ?: (string) $post->site_id;
+        if (! $site) {
+            $site = Site::query()
+                ->where('short_name', $post->site_id)
+                ->orWhere('id', $post->site_id)
+                ->first();
+        }
+
+        if (! $site) {
+            return null;
+        }
+
+        $siteTokens = array_map('strval', array_filter([
+            $site->getKey(),
+            $site->short_name,
+            $site->getAttribute('slug'),
+        ], fn (mixed $value): bool => filled($value)));
+
+        return in_array((string) $post->site_id, $siteTokens, true)
+            ? (string) $site->short_name
+            : null;
     }
 }

@@ -7,11 +7,31 @@ use App\Support\StaticBuildQueue;
 
 class PostObserver
 {
-    /**
-     * Gatillo cuando el post se crea, se edita o se publica.
-     */
-    public function saved(Post $post): void
+    private const BUILD_RELEVANT_ATTRIBUTES = [
+        'title',
+        'slug',
+        'body',
+        'keywords',
+        'type',
+        'status',
+        'site_id',
+        'has_math',
+        'category',
+        'published_at',
+        'created_at',
+    ];
+
+    public function created(Post $post): void
     {
+        $this->rebuildSite($post);
+    }
+
+    public function updated(Post $post): void
+    {
+        if (! $post->wasChanged(self::BUILD_RELEVANT_ATTRIBUTES)) {
+            return;
+        }
+
         $this->rebuildSite($post);
     }
 
@@ -40,6 +60,6 @@ class PostObserver
             return;
         }
 
-        StaticBuildQueue::queuePostQuietly($post);
+        StaticBuildQueue::queuePostSynchronizationQuietly($post);
     }
 }

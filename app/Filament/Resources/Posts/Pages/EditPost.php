@@ -38,7 +38,7 @@ class EditPost extends EditRecord
         }
 
         try {
-            $queued = StaticBuildQueue::queuePost($this->record);
+            $queued = StaticBuildQueue::queuePostSynchronization($this->record);
 
             Notification::make()
                 ->title($queued ? 'Compilacion estatica encolada' : 'No se pudo resolver el sitio del post')
