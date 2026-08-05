@@ -2,9 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Models\Post;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
-use App\Models\Site;
 
 class PostFactory extends Factory
 {
@@ -15,10 +15,10 @@ class PostFactory extends Factory
         return [
             'title' => rtrim($title, '.'),
             'slug' => Str::slug($title), // Esto se va a sobreescribir en el Seeder
-            'body' => "## " . $this->faker->sentence() . "\n\n" . $this->faker->paragraphs(rand(30,60), true),
+            'body' => '## '.$this->faker->sentence()."\n\n".$this->faker->paragraphs(rand(30, 60), true),
             'keywords' => implode(', ', $this->faker->words(rand(1, 3))),
-            // ¡Agregado Conversaciones acá!
-            'type' => $this->faker->randomElement(['Cuaderno', 'Ensayo', 'Fuente', 'Mapa', 'Conversaciones']),
+            'type' => Post::TYPE_POST,
+            'category_id' => null,
             'status' => 'published',
             'site_id' => 'ensayos',
             'created_at' => $this->faker->dateTimeBetween('-1 year', 'now'),

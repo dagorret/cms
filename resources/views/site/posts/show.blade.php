@@ -10,7 +10,10 @@
 </p>
 
 <div class="kicker mt-6 font-sans text-[.76rem] font-bold uppercase tracking-[.14em] text-[#0f4c5c]">
-{{ config('static_cms.types.' . ($post->type ?? 'post'), ucfirst($post->type ?? 'post')) }}
+{{ $post->type === \App\Models\Post::TYPE_PAGE ? 'Página' : 'Post' }}
+@if($post->category)
+ · <a href="{{ $subdirUrl }}/category/{{ $post->category->slug }}/">{{ $post->category->name }}</a>
+@endif
 </div>
 
 <h1 class="my-5 font-serif text-[clamp(2rem,4vw,4rem)] font-bold leading-[.98] tracking-[-.055em] text-[#171717]">

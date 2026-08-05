@@ -46,12 +46,9 @@ return [
     'max_feed_items' => env('STATIC_MAX_FEED_ITEMS', 50),
     'sitemap_per_page' => env('STATIC_SITEMAP_PER_PAGE', 1000),
 
-    // 📝 Tipos de Contenido Disponibles en el CMS
-    'types' => [
-        'notebook' => 'Cuaderno',
-        'essay' => 'Ensayo',
-        'source' => 'Fuente',
-        'map' => 'Mapa',
-        'conversation' => 'Conversación', // 🔥 Sumamos conversaciones
+    // Tipo técnico. Las categorías editoriales viven en la tabla categories.
+    'content_types' => [
+        'post' => 'Post',
+        'page' => 'Página',
     ],
 ];

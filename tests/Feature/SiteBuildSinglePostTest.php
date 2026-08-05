@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -31,12 +30,6 @@ class SiteBuildSinglePostTest extends TestCase
         config()->set('static_cms.media.base_path', 'site-build-single-post-test-media');
         config()->set('static_cms.media.optimize', false);
         config()->set('static_cms.home_first_page_posts', 10);
-
-        if (! Schema::hasColumn('posts', 'category')) {
-            Schema::table('posts', function (Blueprint $table): void {
-                $table->string('category')->nullable();
-            });
-        }
 
         Storage::fake('public');
         $this->distPath = Storage::disk('public')->path('static-site');
@@ -121,6 +114,66 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertStringContainsString('Forzado uno', File::get($this->path("{$first->slug}/index.html")));
         $this->assertStringContainsString('Forzado dos', File::get($this->path("{$second->slug}/index.html")));
         $this->assertFileDoesNotExist($this->path("{$draft->slug}/index.html"));
+    }
+
+    public function test_build_genera_page_individual_la_excluye_de_portada_y_feed_y_la_incluye_en_sitemap(): void
+    {
+        $post = $this->createPost(['slug' => 'articulo-visible', 'title' => 'Artículo visible']);
+        $page = $this->createPost([
+            'slug' => 'sobre',
+            'title' => 'Sobre este sitio',
+            'type' => Post::TYPE_PAGE,
+        ]);
+
+        $this->assertSame(0, $this->buildAll(), Artisan::output());
+
+        $this->assertFileExists($this->path("{$post->slug}/index.html"));
+        $this->assertFileExists($this->path("{$page->slug}/index.html"));
+        $this->assertStringContainsString('Sobre este sitio', File::get($this->path('sobre/index.html')));
+        $homePayload = json_decode(File::get($this->path('data/page-1.json')), true);
+        $this->assertNotContains($page->id, array_column($homePayload['posts'], 'id'));
+        $this->assertContains($post->id, array_column($homePayload['posts'], 'id'));
+        $this->assertStringContainsString('Sobre este sitio', File::get($this->path('menu.html')));
+        $this->assertStringNotContainsString('/sobre/', File::get($this->path('feed.xml')));
+        $this->assertStringContainsString('/sobre/', File::get($this->path('sitemaps/page-1.xml')));
+        $this->assertNull($page->fresh()->category_id);
+    }
+
+    public function test_json_expone_tipo_tecnico_y_categoria_dinamica(): void
+    {
+        $post = $this->createPost(['category' => 'Ensayo', 'slug' => 'json-editorial']);
+        $this->buildAll();
+
+        $payload = json_decode(File::get($this->path('data/page-1.json')), true);
+        $serialized = collect($payload['posts'])->firstWhere('id', $post->id);
+
+        $this->assertSame(Post::TYPE_POST, $serialized['type']);
+        $this->assertSame('Ensayo', $serialized['category']['name']);
+        $this->assertSame('ensayo', $serialized['category']['slug']);
+        $this->assertArrayNotHasKey('category_id', $serialized);
+    }
+
+    public function test_categoria_hija_usa_url_plana_y_conserva_ruta_jerarquica_en_json(): void
+    {
+        $parent = $this->category('Historia');
+        $child = Category::query()->create([
+            'site_id' => $this->site->id,
+            'parent_id' => $parent->id,
+            'name' => 'Siglo XIX',
+            'slug' => 'siglo-xix',
+        ]);
+        $post = $this->createPost([
+            'slug' => 'historia-del-xix',
+            'category_id' => $child->id,
+        ]);
+
+        $this->buildAll();
+
+        $this->assertFileExists($this->path('category/siglo-xix/index.html'));
+        $this->assertFileDoesNotExist($this->path('category/historia/siglo-xix/index.html'));
+        $payload = json_decode(File::get($this->path('category/siglo-xix/page-1.json')), true);
+        $serialized = collect($payload)->firstWhere('id', $post->id);
+        $this->assertSame('Historia / Siglo XIX', $serialized['category']['path']);
     }
 
     public function test_post_actualiza_solo_su_html_sin_tocar_contenido_ni_mtime_del_vecino_y_regenera_globales(): void
@@ -307,7 +360,8 @@ class SiteBuildSinglePostTest extends TestCase
         $this->buildAll();
         $this->assertFileExists($this->path('category/vieja/page-1.json'));
 
-        Post::query()->whereKey($post->id)->update(['category' => 'Nueva']);
+        $newCategory = $this->category('Nueva');
+        Post::query()->whereKey($post->id)->update(['category_id' => $newCategory->id]);
 
         $this->assertSame(0, $this->buildPost($post));
         $this->assertFileDoesNotExist($this->path('category/vieja/page-1.json'));
@@ -443,19 +497,39 @@ class SiteBuildSinglePostTest extends TestCase
         static $sequence = 0;
         $sequence++;
 
+        $categoryName = array_key_exists('category', $attributes)
+            ? (string) $attributes['category']
+            : 'General';
+        unset($attributes['category']);
+        $siteToken = (string) ($attributes['site_id'] ?? $this->site->short_name);
+        $categorySite = Site::query()->whereKey($siteToken)->orWhere('short_name', $siteToken)->firstOrFail();
+        $categoryId = $categoryName !== '' ? $this->category($categoryName, $categorySite)->id : null;
+
         return Post::factory()->create(array_merge([
             'site_id' => $this->site->short_name,
             'status' => Post::STATUS_PUBLISHED,
             'slug' => "post-{$sequence}",
             'title' => "Post {$sequence}",
             'body' => "Contenido {$sequence}",
-            'type' => 'post',
-            'category' => 'General',
+            'type' => Post::TYPE_POST,
+            'category_id' => $categoryId,
             'keywords' => 'prueba, incremental',
             'published_at' => Carbon::parse('2026-01-01'),
             'created_at' => Carbon::parse('2026-01-01')->addSeconds($sequence),
             'updated_at' => Carbon::parse('2026-01-01')->addSeconds($sequence),
         ], $attributes));
+    }
+
+    private function category(string $name, ?Site $site = null): Category
+    {
+        $site ??= $this->site;
+
+        return Category::query()->firstOrCreate([
+            'site_id' => $site->id,
+            'slug' => str($name)->slug()->toString(),
+        ], [
+            'name' => $name,
+        ]);
     }
 
     private function buildAll(): int

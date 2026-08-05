@@ -2,8 +2,9 @@
 
 namespace App\Filament\Resources\Posts\Schemas;
 
-use Athphane\FilamentEditorjs\Forms\Components\EditorjsTextField;
+use App\Models\Category;
 use App\Models\Post;
+use Athphane\FilamentEditorjs\Forms\Components\EditorjsTextField;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Hidden;
@@ -32,7 +33,7 @@ class PostForm
                 ->fileAttachmentsDisk('public')
                 ->fileAttachmentsDirectory(self::resolveMediaDirectory())
                 ->fileAttachmentsVisibility('public')
-                ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/' . trim((string) $file, '/') : null),
+                ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/'.trim((string) $file, '/') : null),
 
             default => MarkdownEditor::make('body')
                 ->toolbarButtons([
@@ -42,7 +43,7 @@ class PostForm
                 ])
                 ->fileAttachmentsDisk('public')
                 ->fileAttachmentsDirectory(self::resolveMediaDirectory())
-                ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/' . trim((string) $file, '/') : null),
+                ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => filled($file) ? '/'.trim((string) $file, '/') : null),
         };
 
         $editorComponent->columnSpanFull();
@@ -54,8 +55,7 @@ class PostForm
                     ->maxLength(255)
                     ->live(onBlur: true)
                     ->afterStateUpdated(
-                        fn (string $operation, mixed $state, Set $set): mixed =>
-                        $operation === 'create' ? $set('slug', Str::slug((string) $state)) : null
+                        fn (string $operation, mixed $state, Set $set): mixed => $operation === 'create' ? $set('slug', Str::slug((string) $state)) : null
                     ),
 
                 Hidden::make('slug_locked')
@@ -84,10 +84,37 @@ class PostForm
                 TextInput::make('keywords')
                     ->placeholder('ej: historia, mapas, siglo xix'),
 
+                Select::make('site_id')
+                    ->relationship('site', 'long_name')
+                    ->live()
+                    ->afterStateUpdated(fn (Set $set): mixed => $set('category_id', null))
+                    ->preload()
+                    ->searchable()
+                    ->required()
+                    ->label('Sitio Web'),
+
                 Select::make('type')
-                    ->options(config('static_cms.types', [])) // 🔥 Pura fidelidad: Si no está en el config, devuelve vacío.
-                    ->default('notebook')
+                    ->label('Tipo técnico')
+                    ->options([
+                        Post::TYPE_POST => 'Post',
+                        Post::TYPE_PAGE => 'Página',
+                    ])
+                    ->default(Post::TYPE_POST)
+                    ->live()
+                    ->afterStateUpdated(function (mixed $state, Set $set): void {
+                        if ($state === Post::TYPE_PAGE) {
+                            $set('category_id', null);
+                        }
+                    })
                     ->required(),
+
+                Select::make('category_id')
+                    ->label('Categoría editorial')
+                    ->options(fn (Get $get): array => Category::hierarchicalOptions($get('site_id')))
+                    ->searchable()
+                    ->preload()
+                    ->nullable()
+                    ->disabled(fn (Get $get): bool => $get('type') === Post::TYPE_PAGE),
 
                 Select::make('status')
                     ->options([
@@ -102,13 +129,6 @@ class PostForm
                     ->label('Contiene formulas matematicas')
                     ->helperText('Activa el post-procesado KaTeX solo para este articulo.')
                     ->default(false),
-
-                Select::make('site_id')
-                    ->relationship('site', 'long_name')
-                    ->preload()
-                    ->searchable()
-                    ->required()
-                    ->label('Sitio Web'),
 
                 DateTimePicker::make('published_at')
                     ->default(now())

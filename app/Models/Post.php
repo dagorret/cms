@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use App\Support\PostBodyRenderer;
+use Athphane\FilamentEditorjs\Traits\ModelHasEditorJsComponent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
-use Athphane\FilamentEditorjs\Traits\ModelHasEditorJsComponent;
 
 class Post extends Model implements HasMedia
 {
@@ -17,8 +19,14 @@ class Post extends Model implements HasMedia
     use InteractsWithMedia;
     use ModelHasEditorJsComponent;
 
+    public const TYPE_POST = 'post';
+
+    public const TYPE_PAGE = 'page';
+
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_PUBLISHED = 'published';
+
     public const STATUS_SCHEDULED = 'scheduled';
 
     protected $fillable = [
@@ -29,6 +37,7 @@ class Post extends Model implements HasMedia
         'type',
         'status',
         'site_id',
+        'category_id',
         'has_math',
         'published_at',
         'static_built_at',
@@ -39,9 +48,16 @@ class Post extends Model implements HasMedia
         return $this->belongsTo(Site::class, 'site_id', 'short_name'); // O 'id', según lo que uses para vincularlos.
     }
 
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
     protected $casts = [
         'has_math' => 'boolean',
         'published_at' => 'datetime',
+        'static_built_at' => 'datetime',
+        'category_id' => 'integer',
     ];
 
     protected static function booted(): void
@@ -57,6 +73,28 @@ class Post extends Model implements HasMedia
         });
 
         static::saving(function (Post $post): void {
+            $post->type = $post->type ?: self::TYPE_POST;
+
+            if (! in_array($post->type, [self::TYPE_POST, self::TYPE_PAGE], true)) {
+                throw new InvalidArgumentException('El tipo técnico debe ser post o page.');
+            }
+
+            if ($post->type === self::TYPE_PAGE) {
+                $post->category_id = null;
+            }
+
+            if ($post->category_id !== null) {
+                $category = Category::query()->with('site')->find($post->category_id);
+                $siteTokens = $category?->site ? [
+                    (string) $category->site->getKey(),
+                    (string) $category->site->short_name,
+                ] : [];
+
+                if (! $category || ! in_array((string) $post->site_id, $siteTokens, true)) {
+                    throw new InvalidArgumentException('La categoría debe pertenecer al mismo sitio que el post.');
+                }
+            }
+
             if (filled($post->slug)) {
                 $post->slug = static::normalizeSlug((string) $post->slug);
 

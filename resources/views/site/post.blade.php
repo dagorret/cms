@@ -48,7 +48,10 @@
         <h1>{{ $post->title }}</h1>
         <div class="meta">
             <span>📅 {{ $post->created_at->format('d/m/Y') }}</span>
-            <span>📂 Tipo: <span class="badge">{{ $post->type }}</span></span>
+            <span>📄 Tipo: <span class="badge">{{ $post->type === \App\Models\Post::TYPE_PAGE ? 'Página' : 'Post' }}</span></span>
+            @if($post->category)
+                <span>📂 Categoría: <a href="{{ $site->subdir ? '/' . trim($site->subdir, '/') : '' }}/category/{{ $post->category->slug }}/">{{ $post->category->name }}</a></span>
+            @endif
         </div>
     </header>
 

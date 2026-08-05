@@ -15,7 +15,10 @@
                 <li class="archive-item">
                     <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="flex items-center justify-between gap-6 decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c]">
                         <span class="font-serif text-[1.55rem] font-bold leading-[1.12] tracking-[-.03em]">{{ $post->title }}</span>
-                        <time datetime="{{ $post->created_at->format('Y-m-d') }}" class="meta">{{ $post->created_at->format('Y-m-d') }}</time>
+                        <span class="meta">
+                            @if($post->category){{ $post->category->name }} · @endif
+                            <time datetime="{{ $post->created_at->format('Y-m-d') }}">{{ $post->created_at->format('Y-m-d') }}</time>
+                        </span>
                     </a>
                 </li>
             @endforeach

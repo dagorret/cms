@@ -194,8 +194,7 @@
             : [];
         $viteCss = $viteManifest['resources/css/app.css']['file'] ?? null;
         $viteJs = $viteManifest['resources/js/app.js']['file'] ?? null;
-        $menuFile = base_path('dist/menu.html');
-        $generatedMenu = file_exists($menuFile) ? trim(file_get_contents($menuFile)) : '';
+        $generatedMenu = trim((string) ($generatedMenu ?? ''));
     @endphp
 
     @if($useAbsoluteUrls && $assetBaseUrl && $viteCss)
@@ -230,11 +229,6 @@
                     {!! $generatedMenu !!}
                 @else
                     <a href="{{ $homeUrl }}" data-tag="">Inicio</a>
-                    <a href="{{ $homeUrl }}?tag=essay" data-tag="essay">Ensayos</a>
-                    <a href="{{ $homeUrl }}?tag=notebook" data-tag="notebook">Cuadernos</a>
-                    <a href="{{ $homeUrl }}?tag=conversation" data-tag="conversation">Conversaciones</a>
-                    <a href="{{ $homeUrl }}?tag=map" data-tag="map">Mapas</a>
-                    <a href="{{ $homeUrl }}?tag=source" data-tag="source">Fuentes</a>
                     <a href="{{ $subdirUrl }}/sobre/">Sobre</a>
                 @endif
             </nav>

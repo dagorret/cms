@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
 use App\Support\StaticBuildQueue;
@@ -117,6 +118,44 @@ class StaticBuildQueueTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_cambiar_categoria_del_post_encola_su_build_incremental(): void
+    {
+        $site = $this->createSite('cambio-categoria');
+        $oldCategory = $this->createCategoryWithoutEvents($site, 'Anterior');
+        $newCategory = $this->createCategoryWithoutEvents($site, 'Nueva');
+        $post = $this->createPostWithoutEvents($site, Post::STATUS_PUBLISHED, [
+            'category_id' => $oldCategory->id,
+        ]);
+
+        $post->update(['category_id' => $newCategory->id]);
+
+        $this->assertPostBuildQueued($site, $post);
+    }
+
+    public function test_cambiar_slug_de_categoria_encola_rebuild_forzado_del_sitio(): void
+    {
+        $site = $this->createSite('slug-categoria');
+        $category = $this->createCategoryWithoutEvents($site, 'Historia');
+
+        $category->update(['slug' => 'historia-nueva']);
+
+        $this->assertSiteBuildQueued($site);
+    }
+
+    public function test_eliminar_categoria_encola_rebuild_y_la_fk_desvincula_posts(): void
+    {
+        $site = $this->createSite('elimina-categoria');
+        $category = $this->createCategoryWithoutEvents($site, 'Temporal');
+        $post = $this->createPostWithoutEvents($site, Post::STATUS_PUBLISHED, [
+            'category_id' => $category->id,
+        ]);
+
+        $category->delete();
+
+        $this->assertNull($post->fresh()->category_id);
+        $this->assertSiteBuildQueued($site);
+    }
+
     public function test_los_tests_de_cola_no_apuntan_al_dist_real(): void
     {
         $site = $this->createSite('dist-aislado');
@@ -154,10 +193,32 @@ class StaticBuildQueueTest extends TestCase
     private function createPostWithoutEvents(Site $site, string $status, array $attributes = []): Post
     {
         return Post::withoutEvents(fn (): Post => Post::factory()->create(array_merge([
-                'site_id' => $site->short_name,
-                'status' => $status,
-                'type' => 'post',
-            ], $attributes)));
+            'site_id' => $site->short_name,
+            'status' => $status,
+            'type' => 'post',
+        ], $attributes)));
+    }
+
+    private function createCategoryWithoutEvents(Site $site, string $name): Category
+    {
+        return Category::withoutEvents(fn (): Category => Category::query()->create([
+            'site_id' => $site->id,
+            'name' => $name,
+            'slug' => str($name)->slug()->toString(),
+        ]));
+    }
+
+    private function assertSiteBuildQueued(Site $site): void
+    {
+        Queue::assertPushed(QueuedCommand::class, function (QueuedCommand $job) use ($site): bool {
+            $data = $this->queuedCommandData($job);
+
+            return ($data[0] ?? null) === 'site:build'
+                && ($data[1]['site_id'] ?? null) === $site->short_name
+                && ($data[1]['--force'] ?? null) === true
+                && ($data[1]['--resource'] ?? null) === true
+                && ! array_key_exists('--post', $data[1]);
+        });
     }
 
     private function queuedCommandData(QueuedCommand $job): array

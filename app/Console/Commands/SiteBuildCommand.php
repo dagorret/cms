@@ -131,6 +131,7 @@ class SiteBuildCommand extends Command
             // Query ultra veloz usando la Base de Datos como Fuente de Verdad Primaria
             $postsChunk = $this->publishedSitePosts($site)
                 ->where('id', '>', $lastId)
+                ->with('category.parent')
                 ->when($section === 'posts', fn ($query) => $this->scopeOnlyPosts($query))
                 // ⚡ Incrementalidad inteligente: si no es force, solo trae lo sucio
                 ->when(! $rebuildAllEntries, function ($query) {
@@ -205,6 +206,7 @@ class SiteBuildCommand extends Command
     {
         $post = $this->publishedSitePosts($site)
             ->whereKey($postId)
+            ->with('category.parent')
             ->select($this->entryColumns())
             ->first();
 
@@ -254,26 +256,24 @@ class SiteBuildCommand extends Command
             'title',
             'body',
             'type',
+            'category_id',
             'keywords',
             'created_at',
             'updated_at',
         ];
-
-        if (Schema::hasColumn('posts', 'category')) {
-            $lightColumns[] = 'category';
-        }
 
         if (Schema::hasColumn('posts', 'has_math')) {
             $lightColumns[] = 'has_math';
         }
 
         $allEntriesLight = $this->publishedSitePosts($site)
+            ->with('category.parent')
             ->select($lightColumns)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $posts = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'post');
-        $pages = $allEntriesLight->filter(fn ($entry) => ($entry->type ?? 'post') === 'page');
+        $posts = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_POST);
+        $pages = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_PAGE);
 
         $generator = new StaticSchemaGenerator($this, $site, $targetFolder);
         $generator->build($posts, $pages, $allEntriesLight);
@@ -424,10 +424,7 @@ class SiteBuildCommand extends Command
 
     protected function scopeOnlyPosts($query)
     {
-        return $query->where(function ($nested): void {
-            $nested->whereNull('type')
-                ->orWhere('type', '!=', 'page');
-        });
+        return $query->where('type', Post::TYPE_POST);
     }
 
     protected function hasMissingPublishedEntryOutput(Site $site, string $targetFolder, string $section): bool
@@ -594,16 +591,13 @@ class SiteBuildCommand extends Command
             'body',
             'keywords',
             'type',
+            'category_id',
             'status',
             'published_at',
             'created_at',
             'updated_at',
             'static_built_at',
         ];
-
-        if (Schema::hasColumn('posts', 'category')) {
-            $columns[] = 'category';
-        }
 
         if (Schema::hasColumn('posts', 'has_math')) {
             $columns[] = 'has_math';

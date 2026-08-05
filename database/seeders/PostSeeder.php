@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
 use App\Models\User;
@@ -35,16 +36,29 @@ class PostSeeder extends Seeder
             ]
         );
 
-        // Crear 10 posts de ejemplo
+        $categories = collect([
+            ['name' => 'Cuaderno', 'slug' => 'cuaderno'],
+            ['name' => 'Ensayo', 'slug' => 'ensayo'],
+            ['name' => 'Fuente', 'slug' => 'fuente'],
+            ['name' => 'Mapa', 'slug' => 'mapa'],
+            ['name' => 'Conversación', 'slug' => 'conversacion'],
+        ])->map(fn (array $category): Category => Category::firstOrCreate(
+            ['site_id' => $site->getKey(), 'slug' => $category['slug']],
+            ['name' => $category['name']],
+        ));
+
         Post::factory()
             ->count(10)
-            ->create([
-                'site_id' => $site->getKey(),
+            ->sequence(fn ($sequence): array => [
+                'site_id' => $site->short_name,
+                'type' => Post::TYPE_POST,
+                'category_id' => $categories[$sequence->index % $categories->count()]->getKey(),
             ])
+            ->create()
             ->each(function (Post $post): void {
                 $post->update([
                     'slug' => Str::slug(
-                        "{$post->type}-{$post->id}-{$post->title}"
+                        "{$post->category->slug}-{$post->id}-{$post->title}"
                     ),
                 ]);
             });

@@ -103,7 +103,7 @@ class PublishingTest extends TestCase
             'slug' => 'post-publicado-real',
             'title' => 'Post publicado real',
             'body' => 'Contenido publicado con imagen optimizada.',
-            'type' => 'notebook',
+            'type' => Post::TYPE_POST,
             'published_at' => now(),
         ]);
 

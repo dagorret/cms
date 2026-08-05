@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Category;
+use App\Models\Post;
 use App\Models\Site;
 use App\Support\PostBodyRenderer;
 use Illuminate\Console\Command;
@@ -9,6 +11,8 @@ use Illuminate\Support\Facades\File;
 
 class StaticSchemaGenerator
 {
+    protected array $categoryPaths = [];
+
     public function __construct(
         protected Command $command,
         protected Site $site,
@@ -17,31 +21,38 @@ class StaticSchemaGenerator
 
     public function build($posts, $pages, $allEntriesLight)
     {
+        view()->share('generatedMenu', '');
+        $this->categoryPaths = $this->buildCategoryPaths();
         $publicPath = $this->publicPath();
         $baseUrl = rtrim((string) $this->site->domain, '/');
-        $fullBaseUrl = $baseUrl . $publicPath;
+        $fullBaseUrl = $baseUrl.$publicPath;
 
         // ===================================================================
         // 1. 📦 ÍNDICES JSON MAESTROS Y SEGMENTACIÓN (ARCHIVE & CATEGORIES)
         // ===================================================================
         $this->command->comment('   📦 Generando metadatos en esquemas JSON inteligentes...');
 
-        // A) Indexar Categorías Únicas con Fallback robusto por tipo
-        $categoriesList = $allEntriesLight->map(fn($e) => $e->category ?: $e->type)
-        ->filter()
-        ->unique()
-        ->values()
-        ->map(fn($cat) => [
-            'slug' => str($cat)->slug()->toString(),
-              'name' => ucfirst($cat)
-        ]);
+        // A) Categorías editoriales dinámicas. type queda reservado a post/page.
+        $categoriesList = $allEntriesLight
+            ->pluck('category')
+            ->filter()
+            ->unique('id')
+            ->sortBy(fn ($category) => [$category->sort_order, $category->name])
+            ->values()
+            ->map(fn ($category) => [
+                'id' => $category->id,
+                'parent_id' => $category->parent_id,
+                'slug' => $category->slug,
+                'name' => $category->name,
+                'path' => $this->categoryPath($category),
+            ]);
 
-        File::put($this->targetFolder . '/categories.json', $categoriesList->toJson(JSON_PRETTY_PRINT));
+        File::put($this->targetFolder.'/categories.json', $categoriesList->toJson(JSON_PRETTY_PRINT));
 
         // B) Archivo Histórico Estático: /archive/{YYYY}/{MM}/{DD}/index.html
-        $archiveRoot = $this->targetFolder . '/archive';
+        $archiveRoot = $this->targetFolder.'/archive';
         $archivePosts = $allEntriesLight
-            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug) && $e->created_at)
+            ->filter(fn ($e) => $e->type === Post::TYPE_POST && ! empty($e->slug) && $e->created_at)
             ->values();
 
         if (File::exists($archiveRoot)) {
@@ -51,10 +62,10 @@ class StaticSchemaGenerator
         File::makeDirectory($archiveRoot, 0755, true);
 
         $groupedArchive = $archivePosts
-            ->groupBy(fn($e) => $e->created_at->format('Y'))
+            ->groupBy(fn ($e) => $e->created_at->format('Y'))
             ->sortKeysDesc();
 
-        $this->putHtml($archiveRoot . '/index.html', view('site.archive.index', [
+        $this->putHtml($archiveRoot.'/index.html', view('site.archive.index', [
             'years' => $groupedArchive->keys()->values(),
             'site' => $this->site,
             'subdir' => $publicPath,
@@ -66,10 +77,10 @@ class StaticSchemaGenerator
             File::makeDirectory($yearPath, 0755, true);
 
             $groupedMonths = $yearEntries
-                ->groupBy(fn($e) => $e->created_at->format('m'))
+                ->groupBy(fn ($e) => $e->created_at->format('m'))
                 ->sortKeysDesc();
 
-            $this->putHtml($yearPath . '/index.html', view('site.archive.year', [
+            $this->putHtml($yearPath.'/index.html', view('site.archive.year', [
                 'year' => $year,
                 'months' => $groupedMonths->keys()->values(),
                 'site' => $this->site,
@@ -82,13 +93,13 @@ class StaticSchemaGenerator
                 File::makeDirectory($monthPath, 0755, true);
 
                 $groupedDays = $monthEntries
-                    ->groupBy(fn($e) => $e->created_at->format('d'))
+                    ->groupBy(fn ($e) => $e->created_at->format('d'))
                     ->sortKeysDesc();
 
-                $this->putHtml($monthPath . '/index.html', view('site.archive.month', [
+                $this->putHtml($monthPath.'/index.html', view('site.archive.month', [
                     'year' => $year,
                     'month' => $month,
-                    'days' => $groupedDays->map(fn($entries) => $entries->count()),
+                    'days' => $groupedDays->map(fn ($entries) => $entries->count()),
                     'site' => $this->site,
                     'subdir' => $publicPath,
                     'subdirUrl' => $publicPath,
@@ -99,7 +110,7 @@ class StaticSchemaGenerator
                     $dayPath = "{$monthPath}/{$day}";
                     File::makeDirectory($dayPath, 0755, true);
 
-                    $this->putHtml($dayPath . '/index.html', view('site.archive.day', [
+                    $this->putHtml($dayPath.'/index.html', view('site.archive.day', [
                         'year' => $year,
                         'month' => $month,
                         'day' => $day,
@@ -117,15 +128,16 @@ class StaticSchemaGenerator
         $homeFirstPagePosts = max((int) config('static_cms.home_first_page_posts', 10), 1);
         $postsPerPage = max((int) config('static_cms.posts_per_home_page', 20), 1);
         $maxHomePages = max((int) config('static_cms.max_home_pages', 20), 1);
-        $dataRoot = $this->targetFolder . '/data';
-        $tagsDataRoot = $dataRoot . '/tags';
-        $categoryRoot = $this->targetFolder . '/category';
+        $dataRoot = $this->targetFolder.'/data';
+        $tagsDataRoot = $dataRoot.'/tags';
+        $categoryRoot = $this->targetFolder.'/category';
         $allPostsForData = $allEntriesLight
-            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug))
+            ->filter(fn ($e) => $e->type === Post::TYPE_POST && ! empty($e->slug))
             ->values();
-        $groupedByCategory = $allPostsForData->groupBy(fn($e) => $e->category ?: ($e->type ?? 'post'));
-        $typeLabels = collect(config('static_cms.types', []));
-        $serializePost = fn($e) => $this->serializePost($e, $typeLabels, $publicPath);
+        $groupedByCategory = $allPostsForData
+            ->filter(fn ($entry) => $entry->category !== null)
+            ->groupBy(fn ($entry) => (int) $entry->category_id);
+        $serializePost = fn ($e) => $this->serializePost($e, $publicPath);
 
         if (File::exists($dataRoot)) {
             File::deleteDirectory($dataRoot);
@@ -138,55 +150,50 @@ class StaticSchemaGenerator
         File::makeDirectory($tagsDataRoot, 0755, true);
         File::makeDirectory($categoryRoot, 0755, true);
 
-        $menuItems = $typeLabels
-            ->map(function ($label, $type) use ($groupedByCategory, $postsPerPage) {
-                $entries = $groupedByCategory->get($type, collect());
+        $menuItems = $groupedByCategory
+            ->map(function ($entries) use ($postsPerPage) {
+                $category = $entries->first()->category;
 
-                if ($entries->isEmpty()) {
+                if (! $category->is_visible) {
                     return null;
                 }
 
-                $slug = str($type)->slug()->toString();
-
                 return [
-                    'title' => $label,
-                    'name' => $label,
-                    'slug' => $slug,
-                    'tag' => $slug,
+                    'type' => 'category',
+                    'id' => $category->id,
+                    'parent_id' => $category->parent_id,
+                    'title' => $category->name,
+                    'name' => $category->name,
+                    'slug' => $category->slug,
+                    'tag' => $category->slug,
+                    'path' => $this->categoryPath($category),
                     'count' => $entries->count(),
                     'totalPages' => (int) ceil($entries->count() / $postsPerPage),
                 ];
             })
             ->filter()
+            ->sortBy(fn (array $item) => $item['path'])
             ->values();
 
-        $extraMenuItems = $groupedByCategory
-            ->reject(fn($entries, $type) => $typeLabels->has($type))
-            ->filter(fn($entries, $type) => !empty($type) && $entries->isNotEmpty())
-            ->map(function ($entries, $type) use ($postsPerPage) {
-                $slug = str($type)->slug()->toString();
-
-                return [
-                    'title' => ucfirst($type),
-                    'name' => ucfirst($type),
-                    'slug' => $slug,
-                    'tag' => $slug,
-                    'count' => $entries->count(),
-                    'totalPages' => (int) ceil($entries->count() / $postsPerPage),
-                ];
-            })
+        $pageMenuItems = $pages
+            ->filter(fn ($page) => ! empty($page->slug))
+            ->map(fn ($page) => [
+                'type' => Post::TYPE_PAGE,
+                'title' => $page->title,
+                'name' => $page->title,
+                'slug' => $page->slug,
+                'url' => $this->joinPublicPath($publicPath, "{$page->slug}/"),
+            ])
             ->values();
+        $navigationItems = $menuItems->concat($pageMenuItems)->values();
 
-        $menuItems = $menuItems->concat($extraMenuItems)->values();
-
-        foreach ($groupedByCategory as $categoryName => $catEntries) {
-            if (empty($categoryName)) continue;
-
-            $catSlug = str($categoryName)->slug()->toString();
-            $catFolder = $this->targetFolder . "/category/{$catSlug}";
+        foreach ($groupedByCategory as $categoryId => $catEntries) {
+            $category = $catEntries->first()->category;
+            $catSlug = $category->slug;
+            $catFolder = $this->targetFolder."/category/{$catSlug}";
             $tagDataFolder = "{$tagsDataRoot}/{$catSlug}";
 
-            if (!File::exists($catFolder)) {
+            if (! File::exists($catFolder)) {
                 File::makeDirectory($catFolder, 0755, true);
             }
 
@@ -206,14 +213,15 @@ class StaticSchemaGenerator
                     'posts' => $postsPayload,
                 ];
 
-                File::put($catFolder . "/page-{$pageNum}.json", $chunkData);
-                File::put($tagDataFolder . "/page-{$pageNum}.json", json_encode($tagPayload));
+                File::put($catFolder."/page-{$pageNum}.json", $chunkData);
+                File::put($tagDataFolder."/page-{$pageNum}.json", json_encode($tagPayload));
             }
+
         }
 
         // Limpieza de residuos de arquitecturas viejas
-        if (File::exists($this->targetFolder . '/archive.json')) {
-            File::delete($this->targetFolder . '/archive.json');
+        if (File::exists($this->targetFolder.'/archive.json')) {
+            File::delete($this->targetFolder.'/archive.json');
         }
 
         // ===================================================================
@@ -221,14 +229,27 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   🍴 Generando menús de navegación estáticos...');
         $menuHtml = view('site.menu', [
-            'items' => $menuItems,
+            'items' => $navigationItems,
             'pages' => $pages,
             'site' => $this->site,
             'subdirUrl' => $publicPath,
         ])->render();
-        $this->putHtml($this->targetFolder . '/menu.html', $menuHtml);
+        $this->putHtml($this->targetFolder.'/menu.html', $menuHtml);
 
-        File::put($this->targetFolder . '/menu.json', $menuItems->toJson(JSON_PRETTY_PRINT));
+        File::put($this->targetFolder.'/menu.json', $navigationItems->toJson(JSON_PRETTY_PRINT));
+        view()->share('generatedMenu', $menuHtml);
+
+        foreach ($groupedByCategory as $catEntries) {
+            $category = $catEntries->first()->category;
+            $catFolder = $this->targetFolder."/category/{$category->slug}";
+            $this->putHtml($catFolder.'/index.html', view('site.category', [
+                'category' => $category,
+                'categoryPath' => $this->categoryPath($category),
+                'posts' => $catEntries->map($serializePost)->values(),
+                'site' => $this->site,
+                'subdirUrl' => $publicPath,
+            ])->render());
+        }
 
         // ===================================================================
         // 3. 📄 PORTADA PRINCIPAL (HTML) Y PAGINACIÓN SUBSIGUIENTE (JSON PURO)
@@ -236,7 +257,7 @@ class StaticSchemaGenerator
         $this->command->comment('   📄 Generando Portada index.html y listados JSON para la SPA...');
 
         // El universo completo de posts ordenados para la portada
-        $allPosts = $allEntriesLight->filter(fn($e) => $e->type !== 'page')->values();
+        $allPosts = $allEntriesLight->filter(fn ($e) => $e->type === Post::TYPE_POST)->values();
         $firstPagePosts = $allPosts->take($homeFirstPagePosts);
         $paginatedPosts = $allPosts
             ->slice($homeFirstPagePosts)
@@ -248,11 +269,11 @@ class StaticSchemaGenerator
         $totalPages = $pagesToRender->count();
 
         // Si existía la estructura vieja de carpetas HTML para las páginas, la limpiamos
-        if (File::exists($this->targetFolder . '/page')) {
-            File::deleteDirectory($this->targetFolder . '/page');
+        if (File::exists($this->targetFolder.'/page')) {
+            File::deleteDirectory($this->targetFolder.'/page');
         }
 
-        foreach (File::glob($this->targetFolder . '/page-*.json') ?: [] as $stalePageFile) {
+        foreach (File::glob($this->targetFolder.'/page-*.json') ?: [] as $stalePageFile) {
             File::delete($stalePageFile);
         }
 
@@ -265,7 +286,7 @@ class StaticSchemaGenerator
                 'posts' => $postsPayload,
             ];
 
-            File::put($dataRoot . "/page-{$currentPage}.json", json_encode($pagePayload));
+            File::put($dataRoot."/page-{$currentPage}.json", json_encode($pagePayload));
 
             if ($currentPage === 1) {
                 // La página 1 de la Home siempre es un HTML real masticado para el landing inicial
@@ -278,10 +299,10 @@ class StaticSchemaGenerator
                     'dataBaseUrl' => $this->joinPublicPath($publicPath, 'data'),
                 ])->render();
 
-                $this->putHtml($this->targetFolder . '/index.html', $indexHtml);
+                $this->putHtml($this->targetFolder.'/index.html', $indexHtml);
             } else {
                 // 🚀 De la página 2 en adelante: JSON puros en la raíz de dist para consumo SPA instantáneo
-                File::put($this->targetFolder . "/page-{$currentPage}.json", $postsPayload->toJson());
+                File::put($this->targetFolder."/page-{$currentPage}.json", $postsPayload->toJson());
             }
         }
 
@@ -292,32 +313,36 @@ class StaticSchemaGenerator
 
         $maxFeedItems = max((int) config('static_cms.max_feed_items', 50), 1);
         $feedPosts = $allEntriesLight
-            ->filter(fn($e) => ($e->type ?? 'post') !== 'page' && !empty($e->slug) && $e->created_at)
-            ->sortByDesc(fn($e) => $e->created_at->timestamp)
+            ->filter(fn ($e) => $e->type === Post::TYPE_POST && ! empty($e->slug) && $e->created_at)
+            ->sortByDesc(fn ($e) => $e->created_at->timestamp)
             ->take($maxFeedItems);
 
-        $feedPath = $this->targetFolder . '/feed.xml';
+        $feedPath = $this->targetFolder.'/feed.xml';
         $feedFile = fopen($feedPath, 'w');
         $siteTitle = htmlspecialchars($this->site->long_name ?? $this->site->name ?? config('app.name'), ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $feedLink = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
-        fwrite($feedFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<rss version="2.0">' . PHP_EOL . '  <channel>' . PHP_EOL);
-        fwrite($feedFile, "    <title>{$siteTitle}</title>" . PHP_EOL);
-        fwrite($feedFile, "    <link>{$feedLink}</link>" . PHP_EOL);
+        fwrite($feedFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<rss version="2.0">'.PHP_EOL.'  <channel>'.PHP_EOL);
+        fwrite($feedFile, "    <title>{$siteTitle}</title>".PHP_EOL);
+        fwrite($feedFile, "    <link>{$feedLink}</link>".PHP_EOL);
 
         foreach ($feedPosts as $post) {
             $url = htmlspecialchars("{$fullBaseUrl}/{$post->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
             $title = htmlspecialchars($post->title, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
-            fwrite($feedFile, '    <item>' . PHP_EOL);
-            fwrite($feedFile, "      <title>{$title}</title>" . PHP_EOL);
-            fwrite($feedFile, "      <link>{$url}</link>" . PHP_EOL);
-            fwrite($feedFile, "      <guid>{$url}</guid>" . PHP_EOL);
-            fwrite($feedFile, "      <pubDate>" . $post->created_at->toRssString() . "</pubDate>" . PHP_EOL);
-            fwrite($feedFile, '    </item>' . PHP_EOL);
+            fwrite($feedFile, '    <item>'.PHP_EOL);
+            fwrite($feedFile, "      <title>{$title}</title>".PHP_EOL);
+            fwrite($feedFile, "      <link>{$url}</link>".PHP_EOL);
+            fwrite($feedFile, "      <guid>{$url}</guid>".PHP_EOL);
+            fwrite($feedFile, '      <pubDate>'.$post->created_at->toRssString().'</pubDate>'.PHP_EOL);
+            if ($post->category) {
+                $categoryName = htmlspecialchars($post->category->name, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                fwrite($feedFile, "      <category>{$categoryName}</category>".PHP_EOL);
+            }
+            fwrite($feedFile, '    </item>'.PHP_EOL);
         }
 
-        fwrite($feedFile, '  </channel>' . PHP_EOL . '</rss>' . PHP_EOL);
+        fwrite($feedFile, '  </channel>'.PHP_EOL.'</rss>'.PHP_EOL);
         fclose($feedFile);
 
         // ===================================================================
@@ -325,10 +350,10 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   🗺️ Generando Sitemap Index y fragmentos masivos...');
 
-        $sitemapsPath = $this->targetFolder . '/sitemaps';
+        $sitemapsPath = $this->targetFolder.'/sitemaps';
         $sitemapPerPage = max((int) config('static_cms.sitemap_per_page', 1000), 1);
         $sitemapEntries = $allEntriesLight
-            ->filter(fn($entry) => !empty($entry->slug) && $entry->updated_at)
+            ->filter(fn ($entry) => ! empty($entry->slug) && $entry->updated_at)
             ->values();
         $sitemapChunks = $sitemapEntries->chunk($sitemapPerPage);
         $sitemapFilesCreated = [];
@@ -339,11 +364,11 @@ class StaticSchemaGenerator
 
         File::makeDirectory($sitemapsPath, 0755, true);
 
-        if (File::exists($this->targetFolder . '/sitemap.xml')) {
-            File::delete($this->targetFolder . '/sitemap.xml');
+        if (File::exists($this->targetFolder.'/sitemap.xml')) {
+            File::delete($this->targetFolder.'/sitemap.xml');
         }
 
-        foreach (File::glob($this->targetFolder . '/sitemap-*.xml') ?: [] as $staleSitemapFile) {
+        foreach (File::glob($this->targetFolder.'/sitemap-*.xml') ?: [] as $staleSitemapFile) {
             File::delete($staleSitemapFile);
         }
 
@@ -354,23 +379,23 @@ class StaticSchemaGenerator
         foreach ($sitemapChunks as $chunkIndex => $chunkEntries) {
             $partNumber = $chunkIndex + 1;
             $fileName = "page-{$partNumber}.xml";
-            $partPath = $sitemapsPath . '/' . $fileName;
+            $partPath = $sitemapsPath.'/'.$fileName;
 
             $partFile = fopen($partPath, 'w');
-            fwrite($partFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
+            fwrite($partFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'.PHP_EOL);
 
             if ($partNumber === 1) {
                 $homeUrl = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                fwrite($partFile, "    <url><loc>{$homeUrl}</loc><priority>1.0</priority></url>" . PHP_EOL);
+                fwrite($partFile, "    <url><loc>{$homeUrl}</loc><priority>1.0</priority></url>".PHP_EOL);
             }
 
             foreach ($chunkEntries as $entry) {
                 $url = htmlspecialchars("{$fullBaseUrl}/{$entry->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
                 $lastMod = htmlspecialchars($entry->updated_at->toIso8601String(), ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                fwrite($partFile, "    <url><loc>{$url}</loc><lastmod>{$lastMod}</lastmod><priority>0.8</priority></url>" . PHP_EOL);
+                fwrite($partFile, "    <url><loc>{$url}</loc><lastmod>{$lastMod}</lastmod><priority>0.8</priority></url>".PHP_EOL);
             }
 
-            fwrite($partFile, '</urlset>' . PHP_EOL);
+            fwrite($partFile, '</urlset>'.PHP_EOL);
             fclose($partFile);
 
             $sitemapFilesCreated[] = [
@@ -379,22 +404,22 @@ class StaticSchemaGenerator
             ];
         }
 
-        $indexPath = $sitemapsPath . '/sitemap-index.xml';
+        $indexPath = $sitemapsPath.'/sitemap-index.xml';
         $indexFile = fopen($indexPath, 'w');
 
-        fwrite($indexFile, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL . '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . PHP_EOL);
+        fwrite($indexFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'.PHP_EOL);
 
         foreach ($sitemapFilesCreated as $sitemapFile) {
             $sitemapUrl = htmlspecialchars("{$fullBaseUrl}/sitemaps/{$sitemapFile['name']}", ENT_XML1 | ENT_QUOTES, 'UTF-8');
             $lastMod = htmlspecialchars($sitemapFile['lastmod'], ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
-            fwrite($indexFile, '  <sitemap>' . PHP_EOL);
-            fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>" . PHP_EOL);
-            fwrite($indexFile, "    <lastmod>{$lastMod}</lastmod>" . PHP_EOL);
-            fwrite($indexFile, '  </sitemap>' . PHP_EOL);
+            fwrite($indexFile, '  <sitemap>'.PHP_EOL);
+            fwrite($indexFile, "    <loc>{$sitemapUrl}</loc>".PHP_EOL);
+            fwrite($indexFile, "    <lastmod>{$lastMod}</lastmod>".PHP_EOL);
+            fwrite($indexFile, '  </sitemap>'.PHP_EOL);
         }
 
-        fwrite($indexFile, '</sitemapindex>' . PHP_EOL);
+        fwrite($indexFile, '</sitemapindex>'.PHP_EOL);
         fclose($indexFile);
 
         // ===================================================================
@@ -402,7 +427,7 @@ class StaticSchemaGenerator
         // ===================================================================
         $this->command->comment('   🚧 Generando 404.html estático con rutas absolutas...');
 
-        $this->putHtml($this->targetFolder . '/404.html', view('site.404', [
+        $this->putHtml($this->targetFolder.'/404.html', view('site.404', [
             'site' => $this->site,
             'subdir' => $publicPath,
             'subdirUrl' => $fullBaseUrl,
@@ -418,20 +443,24 @@ class StaticSchemaGenerator
         File::put($path, StaticHtmlCleaner::clean($html));
     }
 
-    protected function serializePost($entry, $typeLabels, string $publicPath): array
+    protected function serializePost($entry, string $publicPath): array
     {
-        $type = $entry->category ?: ($entry->type ?? 'post');
-
         return [
             'id' => $entry->id,
             'title' => $entry->title,
             'slug' => $entry->slug,
             'url' => $this->joinPublicPath($publicPath, "{$entry->slug}/"),
-            'type' => $entry->type ?? 'post',
-            'typeLabel' => $typeLabels->get($type, ucfirst((string) $type)),
-            'category' => $entry->category ?? null,
+            'type' => $entry->type,
+            'typeLabel' => $entry->type === Post::TYPE_PAGE ? 'Página' : 'Post',
+            'category' => $entry->category ? [
+                'id' => $entry->category->id,
+                'name' => $entry->category->name,
+                'slug' => $entry->category->slug,
+                'parent_id' => $entry->category->parent_id,
+                'path' => $this->categoryPath($entry->category),
+            ] : null,
             'tags' => collect(explode(',', (string) $entry->keywords))
-                ->map(fn($tag) => trim($tag))
+                ->map(fn ($tag) => trim($tag))
                 ->filter()
                 ->values()
                 ->all(),
@@ -442,6 +471,43 @@ class StaticSchemaGenerator
         ];
     }
 
+    protected function buildCategoryPaths(): array
+    {
+        $categories = Category::query()
+            ->where('site_id', $this->site->getKey())
+            ->get(['id', 'parent_id', 'name'])
+            ->keyBy('id');
+        $paths = [];
+        $resolve = function (Category $category, array $visited = []) use (&$resolve, $categories, &$paths): string {
+            if (isset($paths[$category->id])) {
+                return $paths[$category->id];
+            }
+
+            if (isset($visited[$category->id])) {
+                return $category->name;
+            }
+
+            $visited[$category->id] = true;
+            $parent = $category->parent_id ? $categories->get($category->parent_id) : null;
+            $paths[$category->id] = $parent
+                ? $resolve($parent, $visited).' / '.$category->name
+                : $category->name;
+
+            return $paths[$category->id];
+        };
+
+        foreach ($categories as $category) {
+            $resolve($category);
+        }
+
+        return $paths;
+    }
+
+    protected function categoryPath(Category $category): string
+    {
+        return $this->categoryPaths[$category->id] ?? $category->name;
+    }
+
     protected function publicPath(): string
     {
         $path = trim((string) $this->site->subdir, '/');
@@ -450,7 +516,7 @@ class StaticSchemaGenerator
             return '';
         }
 
-        return '/' . $path;
+        return '/'.$path;
     }
 
     protected function joinPublicPath(string $publicPath, string $path): string
@@ -461,6 +527,6 @@ class StaticSchemaGenerator
             return $publicPath === '' ? '/' : "{$publicPath}/";
         }
 
-        return ($publicPath === '' ? '' : $publicPath) . "/{$path}/";
+        return ($publicPath === '' ? '' : $publicPath)."/{$path}/";
     }
 }

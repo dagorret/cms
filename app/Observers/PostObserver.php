@@ -16,7 +16,7 @@ class PostObserver
         'status',
         'site_id',
         'has_math',
-        'category',
+        'category_id',
         'published_at',
         'created_at',
     ];
@@ -30,6 +30,14 @@ class PostObserver
     {
         if (! $post->wasChanged(self::BUILD_RELEVANT_ATTRIBUTES)) {
             return;
+        }
+
+        if ($post->wasChanged('site_id')) {
+            $previousSite = $post->getPrevious()['site_id'] ?? null;
+
+            if (filled($previousSite)) {
+                StaticBuildQueue::queueSiteSynchronizationQuietly($previousSite);
+            }
         }
 
         $this->rebuildSite($post);

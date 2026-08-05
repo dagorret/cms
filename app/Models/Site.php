@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'short_name',
         'long_name',
@@ -17,9 +20,13 @@ class Site extends Model
         'dist_path',
     ];
 
-    // De paso ya dejamos declarada la relación: Un sitio tiene muchos posts
     public function posts(): HasMany
     {
-        return $this->hasMany(Post::class);
+        return $this->hasMany(Post::class, 'site_id', 'short_name');
+    }
+
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class);
     }
 }

@@ -14,6 +14,9 @@ final class StaticBuildQueue
     /** @var array<string, true> */
     private static array $queuedPosts = [];
 
+    /** @var array<string, true> */
+    private static array $queuedSites = [];
+
     public static function queuePost(Post $post): bool
     {
         if (! $post->isPublished()) {
@@ -75,6 +78,38 @@ final class StaticBuildQueue
     {
         try {
             return self::queuePostSynchronization($post);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
+    }
+
+    public static function queueSiteSynchronization(int|string $siteIdentifier): bool
+    {
+        $site = Site::query()
+            ->whereKey($siteIdentifier)
+            ->orWhere('short_name', $siteIdentifier)
+            ->first();
+
+        if (! $site || isset(self::$queuedSites[(string) $site->short_name])) {
+            return $site !== null;
+        }
+
+        Artisan::queue('site:build', [
+            'site_id' => $site->short_name,
+            '--force' => true,
+            '--resource' => true,
+        ]);
+        self::$queuedSites[(string) $site->short_name] = true;
+
+        return true;
+    }
+
+    public static function queueSiteSynchronizationQuietly(int|string $siteIdentifier): bool
+    {
+        try {
+            return self::queueSiteSynchronization($siteIdentifier);
         } catch (Throwable $exception) {
             report($exception);
 

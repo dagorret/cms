@@ -20,7 +20,7 @@
                 $url = data_get($post, 'url') ?: "/{$slug}/";
                 $title = data_get($post, 'title');
                 $date = data_get($post, 'date');
-                $typeLabel = data_get($post, 'typeLabel');
+                $categoryName = data_get($post, 'category.name');
                 $tagsValue = data_get($post, 'tags', []);
                 $tags = collect(is_array($tagsValue) ? $tagsValue : explode(',', (string) $tagsValue))
                     ->map(fn($tag) => trim($tag))
@@ -34,8 +34,8 @@
                     @if($date)
                         <time datetime="{{ $date }}">{{ $date }}</time>
                     @endif
-                    @if($typeLabel)
-                        <span>{{ $date ? ' · ' : '' }}{{ $typeLabel }}</span>
+                    @if($categoryName)
+                        <span>{{ $date ? ' · ' : '' }}{{ $categoryName }}</span>
                     @endif
                     @if($tags->isNotEmpty())
                         <span> · {{ $tags->join(', ') }}</span>
@@ -180,7 +180,7 @@
         const slug = String(post.slug ?? '').replace(/^\/+|\/+$/g, '');
         const url = post.url || `/${slug}/`;
 
-        if (post.typeLabel) meta.push(escapeHtml(post.typeLabel));
+        if (post.category?.name) meta.push(escapeHtml(post.category.name));
         if (tags.length > 0) meta.push(escapeHtml(tags.join(', ')));
 
         const dateMarkup = post.date
@@ -250,6 +250,10 @@
             const links = [
                 `<a href="${escapeHtml(homeUrl)}" data-tag="">Inicio</a>`,
                 ...items.map(item => {
+                    if (item.type === 'page') {
+                        return `<a href="${escapeHtml(item.url)}">${escapeHtml(item.title || item.name)}</a>`;
+                    }
+
                     const tag = item.tag || item.slug;
                     const title = item.title || item.name || tag;
                     const href = `${homeUrl}?tag=${encodeURIComponent(tag)}`;

@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->text('body')->nullable();
             $table->string('keywords')->nullable();
-            $table->string('type')->default('notebook');
+            $table->string('type')->default('post');
             $table->string('status')->default('draft');
             $table->string('site_id')->nullable();
             $table->timestamp('published_at')->nullable();
