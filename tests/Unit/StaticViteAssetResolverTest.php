@@ -64,6 +64,7 @@ class StaticViteAssetResolverTest extends TestCase
         $this->writeAsset('assets/app-XYZ.js');
         $this->writeAsset('assets/chunk-123.js');
         $this->writeAsset('assets/chunk-456.css');
+        $this->writeAsset('assets/mathjax-MATH.js');
         $this->writeManifest([
             'resources/css/app.css' => ['file' => 'assets/app-ABC.css', 'isEntry' => true],
             'resources/js/app.js' => [
@@ -73,6 +74,7 @@ class StaticViteAssetResolverTest extends TestCase
                 'isEntry' => true,
             ],
             '_chunk.js' => ['file' => 'assets/chunk-123.js'],
+            'resources/js/mathjax.js' => ['file' => 'assets/mathjax-MATH.js', 'isEntry' => true],
         ]);
 
         $assets = (new StaticViteAssetResolver($this->buildPath))->resolve('/blog');
@@ -85,6 +87,7 @@ class StaticViteAssetResolverTest extends TestCase
             ['/blog/build/assets/app-XYZ.js'],
             $assets->scriptUrls(),
         );
+        $this->assertSame('/blog/build/assets/mathjax-MATH.js', $assets->mathJaxScriptUrl());
     }
 
     public function test_admite_una_exportacion_sin_javascript(): void
@@ -98,6 +101,7 @@ class StaticViteAssetResolverTest extends TestCase
 
         $this->assertSame(['/build/assets/app-CSSONLY.css'], $assets->stylesheetUrls());
         $this->assertSame([], $assets->scriptUrls());
+        $this->assertNull($assets->mathJaxScriptUrl());
     }
 
     public function test_rechaza_rutas_inseguras_del_manifest(): void

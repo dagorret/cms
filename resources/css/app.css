@@ -80,7 +80,7 @@
     .article-content blockquote ul { margin-block: 1em; }
     .article-content blockquote .table-wrapper,
     .article-content blockquote pre,
-    .article-content blockquote .katex-display {
+    .article-content blockquote mjx-container[display="true"] {
         max-width: 100%;
         overflow-x: auto;
         overscroll-behavior-inline: contain;
@@ -201,7 +201,8 @@
         vertical-align: -0.1em;
     }
 
-    .article-content .katex-display {
+    .article-content mjx-container[display="true"] {
+        display: block;
         max-width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
@@ -210,10 +211,13 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    .article-content .katex-display > .katex {
-        position: relative;
+    .article-content mjx-container[display="true"] > svg {
         min-width: max-content;
     }
+
+    .article-content mjx-container:not([display="true"]) { display: inline; }
+
+    .js.math-pending .article-content { visibility: hidden; }
 
     .dark .article-content a { color: #8fc3cf; }
     .dark .article-content del,

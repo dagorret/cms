@@ -86,7 +86,7 @@ class SiteBuildCommand extends Command
         $this->resourceSnapshot('inicio');
 
         if ($postId !== null) {
-            $this->publishKatexAssets($targetFolder);
+            $this->removeObsoleteVendorAssets($targetFolder);
 
             return $this->compileSinglePost($site, $targetFolder, $postId, $resource);
         }
@@ -97,7 +97,7 @@ class SiteBuildCommand extends Command
                 $this->cleanDistForForcedBuild($targetFolder);
             }
 
-            $this->publishKatexAssets($targetFolder);
+            $this->removeObsoleteVendorAssets($targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
         } catch (Throwable $exception) {
             report($exception);
@@ -871,35 +871,30 @@ class SiteBuildCommand extends Command
         }
     }
 
-    /**
-     * Publica los assets estaticos de KaTeX (CSS, JS y fuentes) dentro del
-     * dist aislado del sitio, ya que ese directorio es el unico que se despliega
-     * (ver README: rsync dist/ -> VPS). No dependemos de un CDN externo ni
-     * de un paso de renderizado en el servidor: el navegador hace el render
-     * en cliente via auto-render.min.js, apuntando a rutas relativas locales.
-     */
-    protected function publishKatexAssets(string $targetFolder): void
+    protected function removeObsoleteVendorAssets(string $targetFolder): void
     {
-        $source = base_path('node_modules/katex/dist');
+        $vendorDirectory = $this->joinPath($targetFolder, 'vendor');
 
-        if (! File::isDirectory($source)) {
-            $this->warn("⚠️  No existe node_modules/katex/dist. Corre 'npm install' antes de compilar (formulas KaTeX no se veran).");
-
+        if (! File::exists($vendorDirectory)) {
             return;
         }
 
-        $destination = $this->joinPath($targetFolder, 'vendor/katex');
+        $root = realpath($targetFolder);
+        $canonicalVendor = realpath($vendorDirectory);
 
-        File::ensureDirectoryExists($destination);
-        File::ensureDirectoryExists($destination.'/contrib');
-        File::ensureDirectoryExists($destination.'/fonts');
+        if (
+            $root === false
+            || $canonicalVendor === false
+            || is_link($vendorDirectory)
+            || dirname($canonicalVendor) !== $root
+            || basename($canonicalVendor) !== 'vendor'
+        ) {
+            throw new RuntimeException("Se rechazo la limpieza del directorio vendor obsoleto [{$vendorDirectory}].");
+        }
 
-        File::copy($source.'/katex.min.css', $destination.'/katex.min.css');
-        File::copy($source.'/katex.min.js', $destination.'/katex.min.js');
-        File::copy($source.'/contrib/auto-render.min.js', $destination.'/contrib/auto-render.min.js');
-        File::copyDirectory($source.'/fonts', $destination.'/fonts');
-
-        $this->comment("   ✔️ Assets de KaTeX publicados en {$destination}");
+        if (! File::deleteDirectory($canonicalVendor)) {
+            throw new RuntimeException("No se pudo eliminar el directorio vendor obsoleto [{$canonicalVendor}].");
+        }
     }
 
     protected function processMediaAssets(string $targetFolder): void

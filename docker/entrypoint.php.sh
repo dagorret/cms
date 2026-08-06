@@ -5,10 +5,8 @@
 # porque el volumen del host pisa el contenido de la imagen: por eso este
 # fixup vive en el entrypoint y no (solo) en el build.
 #
-# No ejecutamos Node en runtime (KaTeX se renderiza en el cliente via
-# auto-render.min.js). Node solo hace falta en build-time para `npm install`,
-# que deja los assets en node_modules/katex/dist listos para que el
-# Orquestador (SiteBuildCommand::publishKatexAssets) los copie a dist/vendor/katex.
+# No ejecutamos Node en runtime. MathJax se integra en un chunk independiente
+# durante `npm run build` y el navegador lo descarga solo cuando corresponde.
 set -e
 
 if [ -d /var/www/node_modules ]; then

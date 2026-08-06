@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\Post;
+use App\Support\PostBodyMathDetector;
 use App\Support\PostBodyRenderer;
 use Carbon\CarbonImmutable;
 use RuntimeException;
@@ -92,6 +93,7 @@ final class PostPreviewService
             'categoryName' => $categoryName,
             'publishedAt' => $publishedAt,
             'keywords' => filled($data['keywords'] ?? null) ? (string) $data['keywords'] : null,
+            'hasMath' => (bool) ($data['has_math'] ?? false) || PostBodyMathDetector::containsMath($data['body'] ?? ''),
             'renderedBody' => PostBodyRenderer::render($data['body'] ?? ''),
         ];
     }

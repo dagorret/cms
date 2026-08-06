@@ -141,6 +141,8 @@ MARKDOWN;
     {
         $this->assertTrue(PostBodyMathDetector::containsMath(['blocks' => [$this->block('$D > 0$')]]));
         $this->assertTrue(PostBodyMathDetector::containsMath(['blocks' => [$this->block("$$\nA x = b\n$$")]]));
+        $this->assertTrue(PostBodyMathDetector::containsMath(['blocks' => [$this->block('\\(D > 0\\)')]]));
+        $this->assertTrue(PostBodyMathDetector::containsMath(['blocks' => [$this->block("\\[\nA x = b\n\\]")]]));
         $this->assertFalse(PostBodyMathDetector::containsMath(['blocks' => [$this->block('Cuesta $100 por mes')]]));
         $this->assertFalse(PostBodyMathDetector::containsMath(['blocks' => [$this->block("```text\n\$x = 1\$\n```")]]));
         $this->assertFalse(PostBodyMathDetector::containsMath(['blocks' => [['type' => 'code', 'data' => ['code' => '$x = 1$']]]]));

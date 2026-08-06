@@ -30,6 +30,11 @@ class Site extends Model
         return $this->hasMany(Category::class);
     }
 
+    public function tags(): HasMany
+    {
+        return $this->hasMany(Tag::class);
+    }
+
     public function menus(): HasMany
     {
         return $this->hasMany(Menu::class);

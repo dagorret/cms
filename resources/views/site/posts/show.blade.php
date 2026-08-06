@@ -3,6 +3,10 @@
 @section('title', $post->title)
 
 @section('content')
+@php
+    $previousPost = $previousPost ?? null;
+    $nextPost = $nextPost ?? null;
+@endphp
 <article class="min-w-0 w-full border border-[#d8d0c3] bg-[#fffaf2] p-[clamp(20px,4vw,54px)] dark:border-[#4a4640] dark:bg-[#211f1c]">
 <header class="mb-8 border-b border-[#d8d0c3] pb-6 dark:border-[#4a4640]">
 <p class="font-sans text-[.86rem] text-[#66615a] dark:text-[#aaa298]">
@@ -30,4 +34,22 @@
 
 @include('site.posts.partials.content', ['renderedBody' => $post->renderedBodyHtml()])
 </article>
+
+@if($previousPost || $nextPost)
+<nav aria-label="Navegación cronológica entre posts" class="mt-8 grid grid-cols-1 gap-4 border-y border-[#d8d0c3] py-6 font-sans dark:border-[#4a4640] md:grid-cols-2">
+@if($previousPost)
+<a href="{{ $previousPost['url'] }}" rel="prev" class="group block min-w-0 border border-[#d8d0c3] bg-[#fffaf2] px-5 py-4 transition-colors hover:border-[#0f4c5c] hover:bg-[#f5eddb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4c5c] dark:border-[#4a4640] dark:bg-[#211f1c] dark:hover:border-[#8fc3cf] dark:hover:bg-[#29251f] dark:focus-visible:outline-[#8fc3cf]">
+<span class="block text-[.72rem] font-bold uppercase tracking-[.14em] text-[#66615a] group-hover:text-[#0f4c5c] dark:text-[#aaa298] dark:group-hover:text-[#8fc3cf]">← Anterior</span>
+<span class="mt-2 block font-serif text-lg font-bold leading-snug text-[#171717] dark:text-[#f5f0e7]">{{ $previousPost['title'] }}</span>
+</a>
+@endif
+
+@if($nextPost)
+<a href="{{ $nextPost['url'] }}" rel="next" class="group block min-w-0 border border-[#d8d0c3] bg-[#fffaf2] px-5 py-4 transition-colors hover:border-[#0f4c5c] hover:bg-[#f5eddb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4c5c] dark:border-[#4a4640] dark:bg-[#211f1c] dark:hover:border-[#8fc3cf] dark:hover:bg-[#29251f] dark:focus-visible:outline-[#8fc3cf] md:col-start-2 md:text-right">
+<span class="block text-[.72rem] font-bold uppercase tracking-[.14em] text-[#66615a] group-hover:text-[#0f4c5c] dark:text-[#aaa298] dark:group-hover:text-[#8fc3cf]">Siguiente →</span>
+<span class="mt-2 block font-serif text-lg font-bold leading-snug text-[#171717] dark:text-[#f5f0e7]">{{ $nextPost['title'] }}</span>
+</a>
+@endif
+</nav>
+@endif
 @endsection

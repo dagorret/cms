@@ -72,6 +72,14 @@ final class PostBodyMathDetector
             return true;
         }
 
+        if (preg_match('/\\\\\[[\s\S]*?\S[\s\S]*?\\\\\]/u', $withoutFencedCode) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\\\\\([^\r\n]*?\S[^\r\n]*?\\\\\)/u', $withoutFencedCode) === 1) {
+            return true;
+        }
+
         return preg_match(
             '/(?<!\\\\)\$(?!\$|\s)(?=[^$\r\n]*(?:[A-Za-z\\\\_^><=+*\/\-]))[^$\r\n]+?(?<!\s|\\\\)\$(?!\$)/u',
             $withoutFencedCode,

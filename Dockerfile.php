@@ -46,7 +46,7 @@ exif \
 && apk del .build-deps \
 && cwebp -version
 
-# 🔧 Node/KaTeX: nos aseguramos de que el binario y los paquetes globales de
+# 🔧 Node/MathJax: nos aseguramos de que el binario y los paquetes globales de
 # Node queden legibles/ejecutables para cualquier usuario del contenedor
 # (www-data corre con UID/GID variable segun el host), evitando que
 # Process::run() falle en silencio al invocar `node` desde Filament.

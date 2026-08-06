@@ -14,6 +14,8 @@ final class StaticViteAssetResolver
 
     public const JS_ENTRY = 'resources/js/app.js';
 
+    public const MATHJAX_ENTRY = 'resources/js/mathjax.js';
+
     public function __construct(
         private readonly ?string $buildPath = null,
     ) {}
@@ -74,10 +76,13 @@ final class StaticViteAssetResolver
             }
         }
 
+        $mathJaxScript = $this->entryScript(self::MATHJAX_ENTRY, $manifest);
+
         return new StaticViteAssets(
             array_values(array_unique($stylesheets)),
             array_values(array_unique($scripts)),
             $publicBasePath,
+            $mathJaxScript,
         );
     }
 
@@ -181,6 +186,26 @@ final class StaticViteAssetResolver
         if (! is_file($assetPath)) {
             throw new RuntimeException("El asset declarado por Vite no existe [{$assetPath}]. Ejecuta nuevamente: npm run build");
         }
+    }
+
+    /** @param array<string, mixed> $manifest */
+    private function entryScript(string $key, array $manifest): ?string
+    {
+        $entry = $manifest[$key] ?? null;
+
+        if (! is_array($entry)) {
+            return null;
+        }
+
+        $file = $entry['file'] ?? null;
+
+        if (! is_string($file) || ! str_ends_with(strtolower($file), '.js') || ! $this->isSafeManifestPath($file)) {
+            throw new RuntimeException("La entrada [{$key}] no contiene un script valido.");
+        }
+
+        $this->assertAssetExists($file);
+
+        return $file;
     }
 
     private function isSafeManifestPath(string $path): bool

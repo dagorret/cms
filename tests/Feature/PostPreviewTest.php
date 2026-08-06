@@ -110,6 +110,10 @@ MARKDOWN;
         $this->assertStringContainsString('<pre', $html);
         $this->assertStringContainsString('<details>', $html);
         $this->assertStringContainsString('A x = b', $html);
+        $this->assertStringContainsString('window.MathJax = {', $html);
+        $this->assertStringContainsString('data-has-math="true"', $html);
+        $this->assertStringContainsString("inlineMath: [['$', '$'], ['\\\\(', '\\\\)']]", $html);
+        $this->assertStringContainsString("displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]", $html);
         $this->assertStringContainsString('Córdoba 🚀', $html);
         $this->assertStringContainsString('<meta name="robots" content="noindex,nofollow">', $html);
         $this->assertStringNotContainsString('<header class="border-b border-[#d8d0c3] bg-[#f7f3eb]/95', $html);
@@ -144,6 +148,7 @@ MARKDOWN;
 
         $this->assertStringContainsString('Segunda', File::get($path));
         $this->assertStringNotContainsString('Primera', File::get($path));
+        $this->assertStringNotContainsString('window.MathJax = {', File::get($path));
         $this->assertNotSame($firstInode, fileinode($path));
         $this->assertSame([], glob($this->previewDirectory.'/.post-preview-*') ?: []);
     }

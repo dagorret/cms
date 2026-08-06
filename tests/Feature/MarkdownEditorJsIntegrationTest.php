@@ -145,12 +145,14 @@ MARKDOWN;
         $this->assertStringContainsString('Párrafo visual anterior.', $html);
         $this->assertStringContainsString('Bloque visual', $html);
         $this->assertStringNotContainsString('<script>alert', $html);
-        $this->assertStringContainsString('/vendor/katex/katex.min.js', $html);
+        $this->assertMatchesRegularExpression('/\/build\/assets\/mathjax-[^"\']+\.js/', $html);
+        $this->assertStringContainsString("inlineMath: [['$', '$'], ['\\\\(', '\\\\)']]", $html);
+        $this->assertStringContainsString("displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]", $html);
         $this->assertStringContainsString('class="article-content min-w-0 w-full', $html);
         $this->assertStringContainsString('"type":"markdown"', $rawBody);
         $this->assertStringContainsString('## Prueba Markdown', $rawBody);
         $this->assertStringNotContainsString('<h2>Prueba Markdown</h2>', $rawBody);
-        $this->assertStringNotContainsString('class="katex"', $rawBody);
+        $this->assertStringNotContainsString('<mjx-container', $rawBody);
     }
 
     public function test_documentos_anteriores_no_se_transforman_y_tool_esta_registrado(): void
@@ -172,6 +174,55 @@ MARKDOWN;
         ));
     }
 
+    public function test_mathjax_se_carga_solo_en_posts_que_contienen_formulas(): void
+    {
+        $site = Site::factory()->create([
+            'short_name' => 'mathjax-condicional',
+            'domain' => 'https://mathjax.example.test',
+            'dist_path' => $this->distPath,
+        ]);
+        $mathPost = Post::factory()->create([
+            'site_id' => $site->short_name,
+            'slug' => 'con-formulas',
+            'title' => 'Con fórmulas',
+            'body' => ['blocks' => [[
+                'type' => 'markdown',
+                'data' => ['source' => '$$\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}$$'],
+            ]]],
+            'type' => Post::TYPE_POST,
+            'status' => Post::STATUS_PUBLISHED,
+            'published_at' => now(),
+            'has_math' => false,
+        ]);
+        $plainPost = Post::factory()->create([
+            'site_id' => $site->short_name,
+            'slug' => 'sin-formulas',
+            'title' => 'Sin fórmulas',
+            'body' => ['blocks' => [[
+                'type' => 'markdown',
+                'data' => ['source' => 'Texto editorial sin expresiones matemáticas.'],
+            ]]],
+            'type' => Post::TYPE_POST,
+            'status' => Post::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+            'has_math' => false,
+        ]);
+
+        $this->assertTrue($mathPost->fresh()->has_math);
+        $this->assertFalse($plainPost->fresh()->has_math);
+        $this->assertSame(0, Artisan::call('site:build', ['site_id' => $site->short_name, '--force' => true]), Artisan::output());
+
+        $mathHtml = File::get($this->distPath.'/con-formulas/index.html');
+        $plainHtml = File::get($this->distPath.'/sin-formulas/index.html');
+
+        $this->assertMatchesRegularExpression('/\/build\/assets\/mathjax-[^"\']+\.js/', $mathHtml);
+        $this->assertStringContainsString('window.MathJax = {', $mathHtml);
+        $this->assertStringContainsString('data-has-math="true"', $mathHtml);
+        $this->assertStringNotContainsString('window.MathJax = {', $plainHtml);
+        $this->assertStringNotContainsString('data-has-math="true"', $plainHtml);
+        $this->assertDoesNotMatchRegularExpression('/\/build\/assets\/mathjax-[^"\']+\.js/', $plainHtml);
+    }
+
     public function test_hoja_publica_contiene_estilos_editoriales_y_defensas_de_overflow(): void
     {
         $css = File::get(resource_path('css/app.css'));
@@ -186,7 +237,7 @@ MARKDOWN;
             '.article-content img',
             '.article-content details',
             '.article-content .footnotes',
-            '.article-content .katex-display',
+            '.article-content mjx-container[display="true"]',
             '.dark .article-content blockquote',
         ] as $selector) {
             $this->assertStringContainsString($selector, $css);
@@ -200,7 +251,7 @@ MARKDOWN;
         $this->assertStringContainsString('.article-content blockquote > :first-child { margin-block-start: 0; }', $css);
         $this->assertStringContainsString('.article-content blockquote > :last-child { margin-block-end: 0; }', $css);
         $this->assertStringContainsString('.article-content blockquote .table-wrapper', $css);
-        $this->assertStringContainsString('.article-content blockquote .katex-display', $css);
+        $this->assertStringContainsString('.article-content blockquote mjx-container[display="true"]', $css);
         $this->assertStringContainsString('.article-content blockquote pre > code { color: inherit; }', $css);
         $this->assertStringContainsString('.dark .article-content blockquote pre > code', $css);
         $this->assertStringContainsString('.article-content blockquote details { background:', $css);

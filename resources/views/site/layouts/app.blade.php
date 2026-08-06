@@ -1,3 +1,6 @@
+@php
+    $hasMath = (bool) ($hasMath ?? ($post->has_math ?? false));
+@endphp
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,7 +9,7 @@
     <title>@yield('title', $site->long_name ?? $site->name ?? 'Notas') — Carlos Dagorret</title>
     <meta name="description" content="{{ $site->description ?? $site->meta_description ?? 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.' }}">
     <script>
-        (() => { document.documentElement.classList.add('js'); let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const dark = value === 'dark' || (value !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
+        (() => { document.documentElement.classList.add('js'); let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false; const dark = value === 'dark' || (value !== 'light' && systemDark); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
     </script>
 
     @php
@@ -31,10 +34,11 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
 
-    <link rel="stylesheet" href="{{ $subdirUrl }}/vendor/katex/katex.min.css">
-    <script defer src="{{ $subdirUrl }}/vendor/katex/katex.min.js"></script>
+    @if($hasMath)
+        @include('site.partials.mathjax')
+    @endif
 </head>
-<body data-public-base-path="{{ $subdirUrl }}" class="m-0 bg-[#f7f3eb] font-serif leading-[1.68] text-[#171717] antialiased [text-rendering:optimizeLegibility] [&_a]:text-inherit [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] dark:bg-[#171717] dark:text-[#e8e1d5] dark:[&_a]:decoration-[#8fc3cf]/50">
+<body data-public-base-path="{{ $subdirUrl }}" data-has-math="{{ $hasMath ? 'true' : 'false' }}" class="m-0 bg-[#f7f3eb] font-serif leading-[1.68] text-[#171717] antialiased [text-rendering:optimizeLegibility] [&_a]:text-inherit [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] dark:bg-[#171717] dark:text-[#e8e1d5] dark:[&_a]:decoration-[#8fc3cf]/50">
     <header class="border-b border-[#d8d0c3] bg-[#f7f3eb]/95 px-6 pb-[18px] pt-[22px] backdrop-blur dark:border-[#4a4640] dark:bg-[#171717]/95">
         <div class="mx-auto flex max-w-[1180px] items-end justify-between gap-6 max-[900px]:block">
             <div>
@@ -84,14 +88,5 @@
         </div>
     </footer>
 
-    <script defer src="{{ $subdirUrl }}/vendor/katex/contrib/auto-render.min.js"
-        onload="renderMathInElement(document.body, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false}
-            ],
-            throwOnError : false
-        });">
-    </script>
 </body>
 </html>

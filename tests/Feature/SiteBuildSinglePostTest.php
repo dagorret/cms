@@ -59,6 +59,63 @@ class SiteBuildSinglePostTest extends TestCase
         $this->assertNull($page->fresh()->static_built_at);
     }
 
+    public function test_posts_individuales_renderizan_navegacion_cronologica_con_urls_reales(): void
+    {
+        $first = $this->createPost([
+            'slug' => 'primero-cronologico',
+            'title' => 'Primero cronológico',
+            'published_at' => Carbon::parse('2026-01-01 08:00:00'),
+        ]);
+        $middle = $this->createPost([
+            'slug' => 'centro-cronologico',
+            'title' => 'Centro cronológico',
+            'published_at' => Carbon::parse('2026-01-02 08:00:00'),
+        ]);
+        $last = $this->createPost([
+            'slug' => 'ultimo-cronologico',
+            'title' => 'Último cronológico',
+            'published_at' => Carbon::parse('2026-01-03 08:00:00'),
+        ]);
+
+        $this->assertSame(0, $this->buildAll(), Artisan::output());
+
+        $middleHtml = File::get($this->path("{$middle->slug}/index.html"));
+        $this->assertStringContainsString('aria-label="Navegación cronológica entre posts"', $middleHtml);
+        $this->assertStringContainsString('href="/primero-cronologico/" rel="prev"', $middleHtml);
+        $this->assertStringContainsString('Primero cronológico', $middleHtml);
+        $this->assertStringContainsString('href="/ultimo-cronologico/" rel="next"', $middleHtml);
+        $this->assertStringContainsString('Último cronológico', $middleHtml);
+
+        $firstHtml = File::get($this->path("{$first->slug}/index.html"));
+        $this->assertStringNotContainsString('rel="prev"', $firstHtml);
+        $this->assertStringContainsString('rel="next"', $firstHtml);
+        $this->assertStringContainsString('md:col-start-2', $firstHtml);
+
+        $lastHtml = File::get($this->path("{$last->slug}/index.html"));
+        $this->assertStringContainsString('rel="prev"', $lastHtml);
+        $this->assertStringNotContainsString('rel="next"', $lastHtml);
+    }
+
+    public function test_paginas_no_renderizan_navegacion_entre_posts(): void
+    {
+        $this->createPost([
+            'slug' => 'post-cronologico',
+            'published_at' => Carbon::parse('2026-01-01'),
+        ]);
+        $page = $this->createPost([
+            'slug' => 'pagina-sin-cronologia',
+            'type' => Post::TYPE_PAGE,
+            'published_at' => Carbon::parse('2026-01-02'),
+        ]);
+
+        $this->assertSame(0, $this->buildAll(), Artisan::output());
+
+        $html = File::get($this->path("{$page->slug}/index.html"));
+        $this->assertStringNotContainsString('Navegación cronológica entre posts', $html);
+        $this->assertStringNotContainsString('rel="prev"', $html);
+        $this->assertStringNotContainsString('rel="next"', $html);
+    }
+
     public function test_build_normal_recupera_un_dist_vacio_aunque_la_bd_marque_los_posts_como_compilados(): void
     {
         $first = $this->createPost([

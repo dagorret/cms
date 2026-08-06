@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Post;
 use App\Models\Site;
+use App\Support\PostBodyMathDetector;
 use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -26,6 +27,7 @@ class StaticContentCompiler
         $publicPath = $this->publicPath();
         $menuRenderer = new MenuRenderer;
         $menuStructure = $menuRenderer->structure($this->site, 'primary', $publicPath);
+        $postChronology = new PostChronology;
 
         foreach ($entries as $entry) {
             if (empty($entry->slug)) {
@@ -44,6 +46,12 @@ class StaticContentCompiler
             $viewName = $entry->type === Post::TYPE_PAGE && view()->exists('site.page')
                 ? 'site.page'
                 : 'site.posts.show';
+            $chronology = $postChronology->adjacentTo($entry);
+            $hasMath = (bool) $entry->has_math || PostBodyMathDetector::containsMath($entry->body);
+
+            if ($hasMath && $this->staticAssets->mathJaxScriptUrl() === null) {
+                throw new \RuntimeException('El manifest de Vite no contiene la entrada de MathJax. Ejecuta primero: npm run build');
+            }
 
             $html = view($viewName, [
                 'post' => $entry,
@@ -52,6 +60,9 @@ class StaticContentCompiler
                 'subdirUrl' => $publicPath,
                 'generatedMenu' => $menuRenderer->renderStructure($menuStructure, rtrim($publicPath, '/').'/'.$entry->slug.'/'),
                 'staticAssets' => $this->staticAssets,
+                'hasMath' => $hasMath,
+                'previousPost' => $this->navigationItem($chronology['previous'], $publicPath),
+                'nextPost' => $this->navigationItem($chronology['next'], $publicPath),
             ])->render();
 
             $html = StaticHtmlCleaner::clean($html);
@@ -77,5 +88,18 @@ class StaticContentCompiler
         }
 
         return '/'.$path;
+    }
+
+    /** @return array{title: string, url: string}|null */
+    protected function navigationItem(?Post $post, string $publicPath): ?array
+    {
+        if (! $post) {
+            return null;
+        }
+
+        return [
+            'title' => (string) $post->title,
+            'url' => rtrim($publicPath, '/').'/'.trim((string) $post->slug, '/').'/',
+        ];
     }
 }

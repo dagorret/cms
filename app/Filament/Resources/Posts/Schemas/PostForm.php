@@ -139,7 +139,7 @@ JS,
 
                 Toggle::make('has_math')
                     ->label('Contiene formulas matematicas')
-                    ->helperText('Activa el post-procesado KaTeX solo para este articulo.')
+                    ->helperText('Activa MathJax solo para este articulo.')
                     ->default(false),
 
                 DateTimePicker::make('published_at')

@@ -14,6 +14,7 @@ final readonly class StaticViteAssets
         public array $stylesheets,
         public array $scripts,
         public string $publicBasePath = '',
+        public ?string $mathJaxScript = null,
     ) {}
 
     /** @return list<string> */
@@ -26,6 +27,11 @@ final readonly class StaticViteAssets
     public function scriptUrls(): array
     {
         return array_map($this->url(...), $this->scripts);
+    }
+
+    public function mathJaxScriptUrl(): ?string
+    {
+        return $this->mathJaxScript !== null ? $this->url($this->mathJaxScript) : null;
     }
 
     private function url(string $file): string
