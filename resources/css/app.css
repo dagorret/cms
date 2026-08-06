@@ -215,7 +215,11 @@
         min-width: max-content;
     }
 
-    .article-content mjx-container:not([display="true"]) { display: inline; }
+    .article-content mjx-container:not([display="true"]) {
+        display: inline-block;
+        margin: 0;
+        vertical-align: middle;
+    }
 
     .js.math-pending .article-content { visibility: hidden; }
 
