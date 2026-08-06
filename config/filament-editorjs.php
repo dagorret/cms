@@ -34,6 +34,7 @@ return [
         'image/x-png',
         'image/svg+xml',
         'image/svg',
+        'image/webp',
     ],
 
     /**
