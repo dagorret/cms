@@ -140,7 +140,7 @@ MARKDOWN;
         $this->assertStringContainsString('<sup id="fnref-markdown-', $html);
         $this->assertStringContainsString('<a class="footnote-ref"', $html);
         $this->assertStringContainsString('<code class="language-php">', $html);
-        $this->assertStringContainsString('$D &gt; 0$', $html);
+        $this->assertStringContainsString('$D > 0$', $html);
         $this->assertStringContainsString('Edición conservada después de recargar.', $html);
         $this->assertStringContainsString('Párrafo visual anterior.', $html);
         $this->assertStringContainsString('Bloque visual', $html);

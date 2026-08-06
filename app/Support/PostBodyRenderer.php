@@ -22,7 +22,7 @@ final class PostBodyRenderer
         if (is_string($normalized)) {
             return self::isHtml($normalized)
                 ? $normalized
-                : (string) Str::markdown($normalized);
+                : self::renderMarkdown($normalized);
         }
 
         return '';
@@ -137,5 +137,13 @@ final class PostBodyRenderer
         }
 
         return (string) FilamentEditorjs::renderContent($content);
+    }
+
+    private static function renderMarkdown(string $markdown): string
+    {
+        $math = MarkdownMathPreserver::extract($markdown);
+        $html = (string) Str::markdown($math['markdown']);
+
+        return MarkdownMathPreserver::restore($html, $math['replacements']);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\EditorJs;
 
+use App\Support\MarkdownMathPreserver;
 use Athphane\FilamentEditorjs\Renderers\BlockRenderer;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
@@ -38,7 +39,10 @@ final class MarkdownBlockRenderer extends BlockRenderer
         $environment->addExtension(new FootnoteExtension);
         $environment->addRenderer(Table::class, new ResponsiveTableRenderer, 100);
 
-        return (string) (new MarkdownConverter($environment))->convert($source);
+        $math = MarkdownMathPreserver::extract($source);
+        $html = (string) (new MarkdownConverter($environment))->convert($math['markdown']);
+
+        return MarkdownMathPreserver::restore($html, $math['replacements']);
     }
 
     public function getType(): string

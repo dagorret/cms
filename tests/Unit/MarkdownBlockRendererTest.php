@@ -52,6 +52,91 @@ MARKDOWN;
         $this->assertStringContainsString("$$\nA x = b\n$$", $visibleText);
     }
 
+    public function test_html_previo_a_mathjax_conserva_los_separadores_de_fila_de_una_matriz(): void
+    {
+        $source = <<<'MARKDOWN'
+$$
+\begin{pmatrix}
+1 & 2 & 3 \\
+4 & 5 & 6 \\
+7 & 8 & 9
+\end{pmatrix}
+$$
+MARKDOWN;
+        $original = $source;
+
+        $htmlBeforeMathJax = (new MarkdownBlockRenderer)->render($this->block($source));
+
+        $this->assertStringContainsString(<<<'LATEX'
+1 & 2 & 3 \\
+4 & 5 & 6 \\
+7 & 8 & 9
+LATEX, $htmlBeforeMathJax);
+        $this->assertStringContainsString($source, $htmlBeforeMathJax);
+        $this->assertSame($original, $source);
+    }
+
+    public function test_preservar_matematica_no_altera_codigo_texto_enlaces_ni_otras_barras(): void
+    {
+        $source = <<<'MARKDOWN'
+Texto normal con **negrita** y ruta C:\datos\archivo.
+
+[Enlace](https://example.com/ruta?q=uno)
+
+Código inline: `$esto-no-es-matematica \\ tampoco$`.
+
+```text
+$$ esto no es matemática \\ $$
+\[ tampoco \]
+```
+
+    $código_indentado \\ tampoco$
+
+Inline: $a \\ b$ y \(c \\ d\).
+
+\[
+e \\ f
+\]
+
+Texto con \*asteriscos literales\*.
+MARKDOWN;
+
+        $html = (new MarkdownBlockRenderer)->render($this->block($source));
+
+        $this->assertStringContainsString('<strong>negrita</strong>', $html);
+        $this->assertStringContainsString('C:\datos\archivo.', $html);
+        $this->assertStringContainsString('<a href="https://example.com/ruta?q=uno">Enlace</a>', $html);
+        $this->assertStringContainsString(<<<'HTML'
+<code>$esto-no-es-matematica \\ tampoco$</code>
+HTML, $html);
+        $this->assertStringContainsString(<<<'CODE'
+$$ esto no es matemática \\ $$
+CODE, $html);
+        $this->assertStringContainsString(<<<'CODE'
+$código_indentado \\ tampoco$
+CODE, $html);
+        $this->assertStringContainsString(<<<'LATEX'
+$a \\ b$
+LATEX, $html);
+        $this->assertStringContainsString(<<<'LATEX'
+\(c \\ d\)
+LATEX, $html);
+        $this->assertStringContainsString("\\[\ne \\\\ f\n\\]", $html);
+        $this->assertStringContainsString('Texto con *asteriscos literales*.', $html);
+        $this->assertStringNotContainsString('FAROMATH', $html);
+    }
+
+    public function test_markdown_legacy_tambien_conserva_la_matematica_sin_modificar_la_fuente(): void
+    {
+        $source = '$$a \\\\ b$$';
+        $original = $source;
+
+        $html = PostBodyRenderer::render($source);
+
+        $this->assertStringContainsString($source, $html);
+        $this->assertSame($original, $source);
+    }
+
     public function test_renderiza_gfm_notas_al_pie_html_editorial_y_tablas_responsivas(): void
     {
         $source = <<<'MARKDOWN'
