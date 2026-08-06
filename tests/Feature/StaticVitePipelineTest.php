@@ -202,10 +202,11 @@ class StaticVitePipelineTest extends TestCase
         $this->assertStringContainsString('href="/page/2/"', $html);
         $this->assertStringContainsString('data-json-url="/data/page-2.json"', $html);
         $this->assertStringContainsString('aria-label="Página siguiente"', $html);
-        $this->assertStringContainsString('focus-visible:outline-[#0f4c5c]', $html);
+        $this->assertStringContainsString('class="pagination__control"', $html);
         $this->assertFileExists($this->distPath.'/page/2/index.html');
         $this->assertFileExists($this->distPath.'/page/3/index.html');
         $this->assertStringContainsString('aria-current="page"', File::get($this->distPath.'/page/2/index.html'));
+        $this->assertStringContainsString('pagination__control--current', File::get($this->distPath.'/page/2/index.html'));
         $this->assertSame(2, $homePageTwo['currentPage']);
         $this->assertSame(3, $homePageTwo['totalPages']);
         $this->assertCount(2, $homePageTwo['posts']);

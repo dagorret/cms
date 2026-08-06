@@ -19,7 +19,7 @@
             <a href="{{ $url }}" class="decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c] dark:hover:text-[#8fc3cf]">{{ $title }}</a>
         </h2>
         @if($excerpt !== '')
-            <p class="mt-3 max-w-2xl text-[1.06rem] leading-[1.62] text-[#171717]/90 dark:text-[#ded7cc]">{{ $excerpt }}</p>
+            <p class="post-excerpt mt-3 max-w-2xl text-[1.06rem] leading-[1.62]">{{ $excerpt }}</p>
         @endif
     </article>
 @endforeach

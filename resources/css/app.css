@@ -26,7 +26,6 @@
     .article-content h5,
     .article-content h6 {
         margin-block: 2em 0.65em;
-        color: #171717;
         font-weight: 700;
         line-height: 1.15;
         letter-spacing: -0.02em;
@@ -216,12 +215,6 @@
         min-width: max-content;
     }
 
-    .dark .article-content h1,
-    .dark .article-content h2,
-    .dark .article-content h3,
-    .dark .article-content h4,
-    .dark .article-content h5,
-    .dark .article-content h6 { color: #f5f0e7; }
     .dark .article-content a { color: #8fc3cf; }
     .dark .article-content del,
     .dark .article-content figcaption,
@@ -243,6 +236,75 @@
     .dark .article-content hr,
     .dark .article-content details { border-color: #5d5750; }
     .dark .article-content details { background: #29251f; }
+
+    .pagination {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-block-start: 3rem;
+        border-block-start: 1px solid #d8d0c3;
+        padding-block-start: 1.5rem;
+    }
+
+    .pagination__control {
+        display: inline-grid;
+        min-width: 2.25rem;
+        min-height: 2.25rem;
+        place-items: center;
+        border: 1px solid #d8d0c3;
+        background: transparent;
+        padding: 0.4rem 0.65rem;
+        color: #66615a;
+        font-family: var(--font-sans);
+        font-size: 0.86rem;
+        line-height: 1;
+        text-decoration: none;
+        transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .pagination__control:not(.pagination__control--current):not(.pagination__control--disabled):hover {
+        border-color: rgb(15 76 92 / 0.45);
+        background: #dfeff0;
+        color: #0f4c5c;
+    }
+
+    .pagination__control:focus-visible {
+        outline: 2px solid #0f4c5c;
+        outline-offset: 3px;
+    }
+
+    .pagination__control--current {
+        border-color: #0f4c5c;
+        background: #dfeff0;
+        color: #0f4c5c;
+        font-weight: 700;
+        cursor: default;
+        box-shadow: inset 0 -2px 0 #0f4c5c;
+    }
+
+    .pagination__control--disabled {
+        color: #8b857c;
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+
+    .dark .pagination { border-color: #4a4640; }
+    .dark .pagination__control { border-color: #5d5750; color: #c5bdb2; }
+    .dark .pagination__control:not(.pagination__control--current):not(.pagination__control--disabled):hover {
+        border-color: #6f9da7;
+        background: #24383d;
+        color: #b8dce4;
+    }
+    .dark .pagination__control:focus-visible { outline-color: #8fc3cf; }
+    .dark .pagination__control--current {
+        border-color: #8fc3cf;
+        background: #24383d;
+        color: #b8dce4;
+        box-shadow: inset 0 -2px 0 #8fc3cf;
+    }
+    .dark .pagination__control--disabled { color: #827b72; }
 
     .site-menu__root,
     .site-menu__submenu {
@@ -345,5 +407,31 @@
             border-inline-start-width: 4px;
             padding: 1.1rem 1rem;
         }
+
+        .pagination { gap: 0.375rem; margin-block-start: 2.5rem; }
+        .pagination__control { min-width: 2.125rem; min-height: 2.125rem; padding: 0.35rem 0.55rem; }
     }
 }
+
+/*
+ * Limite de herencia tipografica editorial.
+ * Se mantiene fuera de las capas de Tailwind para que el contenido dinamico y
+ * los extractos no puedan volver al color claro base por el orden del bundle.
+ */
+.article-content {
+    --article-text: #171717;
+    color: var(--article-text);
+}
+
+.dark .article-content { --article-text: #ded7cc; }
+
+/* El renderer visual del paquete agrega colores claros propios a headers,
+ * párrafos y celdas. Dentro del contenido editorial vuelven a heredar. */
+.article-content :where(.text-zinc-800, .text-gray-700) { color: inherit; }
+
+.post-excerpt {
+    --excerpt-text: #171717;
+    color: var(--excerpt-text);
+}
+
+.dark .post-excerpt { --excerpt-text: #ded7cc; }

@@ -205,6 +205,12 @@ MARKDOWN;
         $this->assertStringContainsString('.dark .article-content blockquote pre > code', $css);
         $this->assertStringContainsString('.article-content blockquote details { background:', $css);
         $this->assertStringContainsString('.dark .article-content blockquote details', $css);
+        $this->assertStringContainsString('--article-text: #171717;', $css);
+        $this->assertStringContainsString('.dark .article-content { --article-text: #ded7cc; }', $css);
+        $this->assertStringContainsString('.article-content :where(.text-zinc-800, .text-gray-700) { color: inherit; }', $css);
+        $this->assertStringContainsString('--excerpt-text: #171717;', $css);
+        $this->assertStringContainsString('.dark .post-excerpt { --excerpt-text: #ded7cc; }', $css);
+        $this->assertStringContainsString('.dark .pagination__control--current {', $css);
         $this->assertStringContainsString('@media (max-width: 640px)', $css);
     }
 }
