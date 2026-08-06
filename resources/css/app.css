@@ -60,15 +60,44 @@
     .article-content ol ol { list-style-type: lower-alpha; }
 
     .article-content blockquote {
-        margin-block: 1.75rem;
-        border-inline-start: 4px solid #8a6f2a;
+        min-width: 0;
+        max-width: 100%;
+        margin-block: 2rem;
+        border-inline-start: 5px solid #8a6f2a;
+        border-radius: 0 0.35rem 0.35rem 0;
         background: #f5eddb;
-        padding: 1rem 1.25rem;
+        padding: 1.35rem 1.5rem;
+        box-shadow: 0 1px 0 rgb(138 111 42 / 0.12);
+        color: #2c2925;
         font-style: italic;
+        overflow-wrap: anywhere;
     }
 
+    .article-content blockquote > * { min-width: 0; max-width: 100%; }
+    .article-content blockquote p { margin-block: 1em; }
     .article-content blockquote > :first-child { margin-block-start: 0; }
     .article-content blockquote > :last-child { margin-block-end: 0; }
+    .article-content blockquote ol,
+    .article-content blockquote ul { margin-block: 1em; }
+    .article-content blockquote .table-wrapper,
+    .article-content blockquote pre,
+    .article-content blockquote .katex-display {
+        max-width: 100%;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+    .article-content blockquote img,
+    .article-content blockquote figure { max-width: 100%; }
+    .article-content blockquote pre,
+    .article-content blockquote code,
+    .article-content blockquote table,
+    .article-content blockquote details,
+    .article-content blockquote .footnotes { font-style: normal; }
+    .article-content blockquote pre { background: #24211d; color: #f7f3eb; }
+    .article-content blockquote pre > code { color: inherit; }
+    .article-content blockquote details { background: rgb(255 250 242 / 0.72); }
+    .article-content blockquote .footnotes { margin-block-start: 1.75rem; }
 
     .article-content .table-wrapper {
         max-width: 100%;
@@ -197,7 +226,15 @@
     .dark .article-content del,
     .dark .article-content figcaption,
     .dark .article-content .footnotes { color: #aaa298; }
-    .dark .article-content blockquote { border-color: #b89b4a; background: #29251f; }
+    .dark .article-content blockquote {
+        border-color: #b89b4a;
+        background: #29251f;
+        box-shadow: 0 1px 0 rgb(184 155 74 / 0.16);
+        color: #e8e1d5;
+    }
+    .dark .article-content blockquote pre,
+    .dark .article-content blockquote pre > code { color: #f7f3eb; }
+    .dark .article-content blockquote details { background: rgb(33 31 28 / 0.72); }
     .dark .article-content th,
     .dark .article-content td { border-color: #5d5750; }
     .dark .article-content th { background: #302b22; }
@@ -300,5 +337,13 @@
         .site-menu__submenu .site-menu__row > a { white-space: normal; }
         .dark .site-menu__row { border-color: #5d5750; }
         .dark .site-menu__submenu { border-inline-start-color: #5d5750; background: transparent; box-shadow: none; }
+    }
+
+    @media (max-width: 640px) {
+        .article-content blockquote {
+            margin-block: 1.75rem;
+            border-inline-start-width: 4px;
+            padding: 1.1rem 1rem;
+        }
     }
 }

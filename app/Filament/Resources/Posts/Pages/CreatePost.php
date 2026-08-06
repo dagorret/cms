@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Posts\Pages;
 
+use App\Filament\Resources\Posts\Pages\Concerns\HasPostPreviewAction;
 use App\Filament\Resources\Posts\PostResource;
 use App\Support\StaticBuildQueue;
 use Filament\Notifications\Notification;
@@ -10,11 +11,18 @@ use Throwable;
 
 class CreatePost extends CreateRecord
 {
+    use HasPostPreviewAction;
+
     protected static string $resource = PostResource::class;
 
     protected function afterCreate(): void
     {
         $this->queueStaticBuild();
+    }
+
+    protected function getFormActions(): array
+    {
+        return $this->addPostPreviewAction(parent::getFormActions());
     }
 
     // ⚡ Redirige directo a la tabla al terminar de crear

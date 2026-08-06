@@ -28,8 +28,6 @@
 </div>
 </header>
 
-<div class="article-content min-w-0 w-full text-[1.12rem] leading-[1.68] text-[#171717] dark:text-[#ded7cc]">
-{!! $post->renderedBodyHtml() !!}
-</div>
+@include('site.posts.partials.content', ['renderedBody' => $post->renderedBodyHtml()])
 </article>
 @endsection

@@ -57,7 +57,7 @@ test('registra el tool Markdown con toolbox y sanitización de fuente literal', 
 
     assert.equal(Tool.toolbox.title, 'Markdown');
     assert.match(Tool.toolbox.icon, /<svg/);
-    assert.deepEqual({ ...Tool.sanitize }, { source: false });
+    assert.deepEqual({ ...Tool.sanitize }, { source: true });
     assert.equal(Tool.isReadOnlySupported, true);
     assert.equal(window.filamentEditorJsTools.markdown.class, Tool);
 });

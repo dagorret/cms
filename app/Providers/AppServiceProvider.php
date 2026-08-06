@@ -34,6 +34,7 @@ class AppServiceProvider extends ServiceProvider
     {
         FilamentAsset::register([
             Js::make('editorjs-markdown-tool', resource_path('js/editorjs-markdown-tool.js')),
+            Js::make('post-preview', resource_path('js/filament-post-preview.js')),
             Css::make('editorjs-markdown-tool', resource_path('css/editorjs-markdown-tool.css')),
         ], package: 'faro-cms');
 

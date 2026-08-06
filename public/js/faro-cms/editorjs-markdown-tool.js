@@ -12,8 +12,8 @@
         }
 
         static get sanitize() {
-            // La fuente debe conservarse literalmente. La salida se protege en el renderer PHP.
-            return { source: false };
+            // Editor.js debe conservar la fuente literalmente; el renderer PHP aplica la politica HTML.
+            return { source: true };
         }
 
         constructor({ data = {}, readOnly = false, api = null, config = {}, block = null } = {}) {

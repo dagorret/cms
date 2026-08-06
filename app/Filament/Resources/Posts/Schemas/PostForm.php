@@ -27,7 +27,19 @@ class PostForm
 
         $editorComponent = match ($editorType) {
             'editorjs' => EditorjsTextField::make('body')
-                ->placeholder('Empezá a escribir tu obra maestra en bloques...'),
+                ->placeholder('Empezá a escribir tu obra maestra en bloques...')
+                ->extraAttributes([
+                    'data-faro-editorjs' => 'body',
+                    'x-init' => <<<'JS'
+$el.faroSyncEditorJs = async () => {
+    if (! instance) return state;
+    await instance.isReady;
+    const output = await instance.save();
+    state = output;
+    return output;
+}
+JS,
+                ]),
 
             'rich_editor' => RichEditor::make('body')
                 ->fileAttachmentsDisk('public')

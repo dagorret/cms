@@ -195,5 +195,16 @@ MARKDOWN;
         $this->assertStringContainsString('max-width: 100%', $css);
         $this->assertStringContainsString('overflow-x: auto', $css);
         $this->assertStringContainsString('min-width: max-content', $css);
+        $this->assertStringContainsString('border-inline-start: 5px solid #8a6f2a', $css);
+        $this->assertStringContainsString('.article-content blockquote p { margin-block: 1em; }', $css);
+        $this->assertStringContainsString('.article-content blockquote > :first-child { margin-block-start: 0; }', $css);
+        $this->assertStringContainsString('.article-content blockquote > :last-child { margin-block-end: 0; }', $css);
+        $this->assertStringContainsString('.article-content blockquote .table-wrapper', $css);
+        $this->assertStringContainsString('.article-content blockquote .katex-display', $css);
+        $this->assertStringContainsString('.article-content blockquote pre > code { color: inherit; }', $css);
+        $this->assertStringContainsString('.dark .article-content blockquote pre > code', $css);
+        $this->assertStringContainsString('.article-content blockquote details { background:', $css);
+        $this->assertStringContainsString('.dark .article-content blockquote details', $css);
+        $this->assertStringContainsString('@media (max-width: 640px)', $css);
     }
 }

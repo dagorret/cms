@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:editorjs": "node --test tests/js/editorjs-markdown-tool.test.js",
+        "test:editorjs": "node --test tests/js/*.test.js",
         "render:math": "node render-math.js"
     },
     "devDependencies": {
