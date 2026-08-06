@@ -118,6 +118,18 @@ final class PostBodyRenderer
 
     protected static function renderEditorJs(array $content): string
     {
+        foreach ($content['blocks'] as $index => &$block) {
+            if (
+                is_array($block)
+                && ($block['type'] ?? null) === 'markdown'
+                && blank($block['id'] ?? null)
+            ) {
+                // Sólo afecta esta copia de render: evita IDs de footnotes repetidos sin alterar body.
+                $block['id'] = 'markdown-block-'.$index;
+            }
+        }
+        unset($block);
+
         $root = FilamentEditorjs::getFacadeRoot();
 
         if (is_object($root) && method_exists($root, 'render')) {

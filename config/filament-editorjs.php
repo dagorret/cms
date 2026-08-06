@@ -9,11 +9,11 @@ return [
     'profiles' => [
         'default' => [
             'header', 'image', 'delimiter', 'list', 'underline', 'quote', 'table',
-            'raw', 'code', 'inline-code', 'style', 'checklist',
+            'raw', 'code', 'inline-code', 'style', 'checklist', 'markdown',
         ],
         'pro' => [
             'header', 'image', 'delimiter', 'list', 'underline', 'quote', 'table',
-            'raw', 'code', 'inline-code', 'style', 'checklist',
+            'raw', 'code', 'inline-code', 'style', 'checklist', 'markdown',
         ],
     ],
 
@@ -47,8 +47,8 @@ return [
      * Code block configuration.
      */
     'code' => [
-        'default_theme'        => 'github-light',
-        'line_highlighting'    => true,
+        'default_theme' => 'github-light',
+        'line_highlighting' => true,
         'supported_line_modes' => ['highlight', 'add', 'delete', 'focus'],
     ],
 ];

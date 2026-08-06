@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\PostBodyMathDetector;
 use App\Support\PostBodyRenderer;
 use Athphane\FilamentEditorjs\Traits\ModelHasEditorJsComponent;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -73,6 +74,10 @@ class Post extends Model implements HasMedia
         });
 
         static::saving(function (Post $post): void {
+            if ($post->isDirty('body') && PostBodyMathDetector::containsMath($post->body)) {
+                $post->has_math = true;
+            }
+
             $post->type = $post->type ?: self::TYPE_POST;
 
             if (! in_array($post->type, [self::TYPE_POST, self::TYPE_PAGE], true)) {

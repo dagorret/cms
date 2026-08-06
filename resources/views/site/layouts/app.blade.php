@@ -6,7 +6,7 @@
     <title>@yield('title', $site->long_name ?? $site->name ?? 'Notas') — Carlos Dagorret</title>
     <meta name="description" content="{{ $site->description ?? $site->meta_description ?? 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.' }}">
     <script>
-        (() => { let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const dark = value === 'dark' || (value !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
+        (() => { document.documentElement.classList.add('js'); let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const dark = value === 'dark' || (value !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
     </script>
 
     @php
@@ -48,21 +48,26 @@
             </p>
         </div>
 
-        <div class="mx-auto mt-[14px] flex max-w-[1180px] items-center justify-between gap-6 max-[900px]:items-start max-[900px]:gap-4">
-            <nav id="spa-menu" aria-label="Navegación principal" class="mx-auto mt-[14px] flex max-w-[1180px] flex-wrap gap-[18px] font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] [&_a]:decoration-[#0f4c5c]/35 [&_a]:underline-offset-[3px] [&_a:hover]:text-[#0f4c5c] dark:text-[#e8e1d5] dark:[&_a:hover]:text-[#8fc3cf]">
+        <div class="mx-auto mt-[14px] flex max-w-[1180px] items-start justify-between gap-6 max-[900px]:gap-4">
+            <div class="min-w-0 flex-1">
+                <button type="button" class="site-menu__main-toggle" data-menu-main-toggle aria-expanded="false" aria-controls="site-menu-tree" aria-label="Abrir menú principal"><span aria-hidden="true">☰</span> Menú</button>
+                <nav id="spa-menu" data-site-menu aria-label="Navegación principal" class="site-menu font-sans text-[.86rem] uppercase tracking-[.08em] text-[#171717] dark:text-[#e8e1d5]">
                 @if($generatedMenu !== '')
                     {!! $generatedMenu !!}
                 @else
-                    <a href="{{ $homeUrl }}">Inicio</a>
-                    <a href="{{ $subdirUrl }}/sobre/">Sobre</a>
+                    <ul id="site-menu-tree" class="site-menu__root" data-menu-root>
+                        <li class="site-menu__item"><div class="site-menu__row"><a href="{{ $homeUrl }}">Inicio</a></div></li>
+                        <li class="site-menu__item"><div class="site-menu__row"><a href="{{ $subdirUrl }}/sobre/">Sobre</a></div></li>
+                    </ul>
                 @endif
-            </nav>
+                </nav>
+            </div>
 
             <button id="theme-toggle" type="button" class="shrink-0 border border-[#d8d0c3] px-2 py-1 font-sans text-[.78rem] text-[#66615a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f4c5c] dark:border-[#5d5750] dark:text-[#c5bdb2]" aria-label="Usar modo oscuro" aria-pressed="false">◐</button>
         </div>
     </header>
 
-    <main class="mx-auto max-w-3xl px-6 py-8">
+    <main class="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
         @yield('content')
     </main>
 

@@ -11,6 +11,7 @@ use App\Models\Post;
 use App\Models\Site;
 use App\Services\MenuRenderer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -109,5 +110,50 @@ class MenuSystemTest extends TestCase
         $this->assertFalse($first->fresh()->is_active);
         $this->assertTrue($second->fresh()->is_active);
         $this->assertCount(6, config('static_cms.menu_locations'));
+    }
+
+    public function test_menu_jerarquico_emite_controles_accesibles_ids_unicos_y_fallback_sin_javascript(): void
+    {
+        $items = [[
+            'id' => 10, 'label' => 'Ciencia', 'url' => '/category/ciencia/', 'target' => '_self',
+            'rel' => null, 'category' => 'ciencia', 'json_url' => '/data/categories/ciencia/page-1.json',
+            'children' => [[
+                'id' => 11, 'label' => 'Matemáticas', 'url' => '/category/matematicas/', 'target' => '_self',
+                'rel' => null, 'category' => 'matematicas', 'json_url' => '/data/categories/matematicas/page-1.json',
+                'children' => [[
+                    'id' => 12, 'label' => 'Álgebra', 'url' => '/category/algebra/', 'target' => '_self',
+                    'rel' => null, 'category' => 'algebra', 'json_url' => '/data/categories/algebra/page-1.json',
+                    'children' => [],
+                ]],
+            ]],
+        ]];
+
+        $html = (new MenuRenderer)->renderStructure($items, '/category/algebra/');
+
+        $this->assertStringContainsString('id="site-menu-tree"', $html);
+        $this->assertStringContainsString('aria-controls="submenu-10"', $html);
+        $this->assertStringContainsString('aria-controls="submenu-11"', $html);
+        $this->assertStringContainsString('id="submenu-10"', $html);
+        $this->assertStringContainsString('id="submenu-11"', $html);
+        $this->assertSame(2, substr_count($html, 'aria-expanded="false"'));
+        $this->assertSame(2, substr_count($html, 'data-menu-submenu>'));
+        $this->assertStringNotContainsString(' hidden', $html, 'Sin JavaScript, la jerarquía debe permanecer visible y navegable.');
+        $this->assertStringContainsString('href="/category/ciencia/"', $html);
+        $this->assertStringContainsString('href="/category/algebra/" aria-current="page"', $html);
+    }
+
+    public function test_bundle_publico_implementa_dropdown_acordeon_escape_click_exterior_y_arranque_idempotente(): void
+    {
+        $javascript = File::get(resource_path('js/app.js'));
+        $css = File::get(resource_path('css/app.css'));
+
+        $this->assertStringContainsString("event.key !== 'Escape'", $javascript);
+        $this->assertStringContainsString("document.querySelectorAll('[data-site-menu]').forEach(closeMenu)", $javascript);
+        $this->assertStringContainsString('[data-site-menu]:not([data-menu-initialized])', $javascript);
+        $this->assertStringContainsString('submenu.hidden = true', $javascript);
+        $this->assertStringContainsString("toggle.matches(':focus-visible')", $javascript);
+        $this->assertStringContainsString('@media (max-width: 900px)', $css);
+        $this->assertStringContainsString('.js .site-menu:not([data-menu-open]) > .site-menu__root', $css);
+        $this->assertStringContainsString('.dark .site-menu__submenu', $css);
     }
 }
