@@ -217,6 +217,52 @@ class StaticVitePipelineTest extends TestCase
         $this->assertFileExists($this->distPath.'/category/paginada/page/2/index.html');
     }
 
+    public function test_paginacion_keyset_no_duplica_ni_omite_posts_con_la_misma_fecha(): void
+    {
+        $this->writeViteBuild();
+        config()->set('static_cms.home_first_page_posts', 2);
+        config()->set('static_cms.posts_per_home_page', 2);
+        config()->set('static_cms.max_home_pages', 10);
+        Post::query()->delete();
+        $date = now()->startOfSecond();
+
+        foreach (range(1, 7) as $number) {
+            Post::factory()->create([
+                'site_id' => $this->site->short_name,
+                'status' => Post::STATUS_PUBLISHED,
+                'slug' => "misma-fecha-{$number}",
+                'title' => "Misma fecha {$number}",
+                'type' => Post::TYPE_POST,
+                'published_at' => $date,
+                'created_at' => $date,
+            ]);
+        }
+
+        $this->assertSame(0, $this->build(), Artisan::output());
+        $slugs = [];
+        foreach (range(1, 4) as $page) {
+            $payload = json_decode(File::get($this->distPath."/data/page-{$page}.json"), true, flags: JSON_THROW_ON_ERROR);
+            array_push($slugs, ...array_column($payload['posts'], 'slug'));
+        }
+
+        $this->assertCount(7, $slugs);
+        $this->assertCount(7, array_unique($slugs));
+        $this->assertSame(array_map(fn (int $number): string => "misma-fecha-{$number}", range(1, 7)), $slugs);
+    }
+
+    public function test_pipeline_global_no_reintroduce_coleccion_total_de_posts_ni_mapa_global_de_slugs(): void
+    {
+        $command = File::get(app_path('Console/Commands/SiteBuildCommand.php'));
+        $schema = File::get(app_path('Services/StaticSchemaGenerator.php'));
+
+        $this->assertStringNotContainsString('$allEntriesLight', $command.$schema);
+        $this->assertStringNotContainsString('activePublishedSlugMap', $command);
+        $this->assertStringNotContainsString('groupedByCategory', $schema);
+        $this->assertStringContainsString('keysetPages(', $schema);
+        $this->assertStringContainsString('streamArchiveDay(', $schema);
+        $this->assertStringContainsString('chunkById(', $command);
+    }
+
     public function test_build_incremental_regenera_la_paginacion_al_cambiar_el_total(): void
     {
         $this->writeViteBuild();

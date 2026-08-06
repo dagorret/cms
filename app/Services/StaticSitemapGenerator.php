@@ -35,9 +35,14 @@ final class StaticSitemapGenerator
         $limit = max((int) config('static_cms.sitemap_urls_per_file', 1000), 1);
         $publicPath = $this->publicPath($site);
         $baseUrl = $this->baseUrl($site).$publicPath;
-        $files = [];
+        $filesCount = 0;
         $urlCount = 0;
         $peakBuffer = 0;
+        $partsManifest = $temporary.'/parts.jsonl';
+        $partsHandle = fopen($partsManifest, 'xb');
+        if ($partsHandle === false) {
+            throw new RuntimeException('No se pudo crear el manifiesto temporal del sitemap.');
+        }
 
         try {
             foreach ($this->groups($site, $baseUrl) as $name => $entries) {
@@ -49,23 +54,33 @@ final class StaticSitemapGenerator
                     $peakBuffer = max($peakBuffer, count($buffer));
 
                     if (count($buffer) >= $limit) {
-                        $files[] = $this->writeUrlSet($temporaryFiles, $baseUrl, $name, $part++, $buffer);
+                        $file = $this->writeUrlSet($temporaryFiles, $baseUrl, $name, $part++, $buffer);
+                        fwrite($partsHandle, json_encode($file, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).PHP_EOL);
+                        $filesCount++;
                         $urlCount += count($buffer);
                         $buffer = [];
                     }
                 }
 
                 if ($buffer !== []) {
-                    $files[] = $this->writeUrlSet($temporaryFiles, $baseUrl, $name, $part, $buffer);
+                    $file = $this->writeUrlSet($temporaryFiles, $baseUrl, $name, $part, $buffer);
+                    fwrite($partsHandle, json_encode($file, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).PHP_EOL);
+                    $filesCount++;
                     $urlCount += count($buffer);
                 }
             }
 
-            $this->writeIndex($temporary.'/sitemap.xml', $files);
+            fclose($partsHandle);
+            $partsHandle = null;
+            $this->writeIndex($temporary.'/sitemap.xml', $partsManifest);
+            File::delete($partsManifest);
             $this->validateXml($temporary.'/sitemap.xml');
             $this->publish($dist, $temporary);
             $this->updateRobots($site, $dist);
         } catch (Throwable $exception) {
+            if (is_resource($partsHandle)) {
+                fclose($partsHandle);
+            }
             if (File::isDirectory($temporary)) {
                 File::deleteDirectory($temporary);
             }
@@ -74,7 +89,7 @@ final class StaticSitemapGenerator
                 : new RuntimeException('No se pudo generar el sitemap: '.$exception->getMessage(), previous: $exception);
         }
 
-        return ['files' => count($files), 'urls' => $urlCount, 'peak_buffer' => $peakBuffer];
+        return ['files' => $filesCount, 'urls' => $urlCount, 'peak_buffer' => $peakBuffer];
     }
 
     /** @return array<string, iterable<array{url:string,lastmod:?string}>> */
@@ -130,7 +145,7 @@ final class StaticSitemapGenerator
 
         $categoryCounts = $site->categories()->where('is_visible', true)
             ->withCount(['posts as published_posts_count' => fn ($query) => $query->where('status', Post::STATUS_PUBLISHED)->where('type', Post::TYPE_POST)])
-            ->orderBy('id')->get();
+            ->orderBy('id')->cursor();
 
         foreach ($categoryCounts as $category) {
             $pages = (int) ceil($category->published_posts_count / $perPage);
@@ -142,20 +157,21 @@ final class StaticSitemapGenerator
 
     private function archiveEntries(Site $site, string $baseUrl): iterable
     {
-        $paths = ['archive/' => null];
-        foreach ($this->publishedQuery($site)->where('type', Post::TYPE_POST)->whereNotNull('created_at')->lazyById(500) as $post) {
-            $date = $post->created_at;
-            $lastmod = $this->date($post->updated_at);
-            foreach ([$date->format('Y').'/', $date->format('Y/m').'/', $date->format('Y/m/d').'/'] as $path) {
-                $key = 'archive/'.$path;
-                if (! isset($paths[$key]) || strcmp((string) $lastmod, (string) $paths[$key]) > 0) {
-                    $paths[$key] = $lastmod;
-                }
+        yield ['url' => $baseUrl.'/archive/', 'lastmod' => null];
+        foreach ([4, 7, 10] as $length) {
+            $periods = $this->publishedQuery($site)
+                ->where('type', Post::TYPE_POST)
+                ->whereNotNull('created_at')
+                ->selectRaw("substr(created_at, 1, {$length}) as period, max(updated_at) as lastmod")
+                ->groupBy('period')
+                ->orderBy('period')
+                ->cursor();
+            foreach ($periods as $period) {
+                yield [
+                    'url' => $baseUrl.'/archive/'.str_replace('-', '/', (string) $period->period).'/',
+                    'lastmod' => $this->date($period->lastmod),
+                ];
             }
-        }
-
-        foreach ($paths as $path => $lastmod) {
-            yield ['url' => $baseUrl.'/'.$path, 'lastmod' => $lastmod];
         }
     }
 
@@ -199,14 +215,19 @@ final class StaticSitemapGenerator
         return ['filename' => $filename, 'url' => $baseUrl.'/sitemaps/'.$filename, 'lastmod' => $latest];
     }
 
-    private function writeIndex(string $path, array $files): void
+    private function writeIndex(string $path, string $partsManifest): void
     {
         $writer = new XMLWriter;
         $writer->openUri($path);
         $writer->startDocument('1.0', 'UTF-8');
         $writer->startElement('sitemapindex');
         $writer->writeAttribute('xmlns', 'http://www.sitemaps.org/schemas/sitemap/0.9');
-        foreach ($files as $file) {
+        $handle = fopen($partsManifest, 'rb');
+        if ($handle === false) {
+            throw new RuntimeException('No se pudo leer el manifiesto temporal del sitemap.');
+        }
+        while (($line = fgets($handle)) !== false) {
+            $file = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
             $writer->startElement('sitemap');
             $writer->writeElement('loc', $file['url']);
             if ($file['lastmod']) {
@@ -214,6 +235,7 @@ final class StaticSitemapGenerator
             }
             $writer->endElement();
         }
+        fclose($handle);
         $writer->endElement();
         $writer->endDocument();
         $writer->flush();
@@ -222,10 +244,23 @@ final class StaticSitemapGenerator
     private function validateXml(string $path): void
     {
         libxml_use_internal_errors(true);
-        if (simplexml_load_file($path) === false) {
+        libxml_clear_errors();
+        $reader = new \XMLReader;
+        if (! $reader->open($path, null, LIBXML_NONET | LIBXML_COMPACT)) {
+            throw new RuntimeException("El XML generado no se pudo abrir [{$path}].");
+        }
+        try {
+            while ($reader->read()) {
+                // XMLReader valida la estructura incrementalmente sin cargar el documento.
+            }
+        } finally {
+            $reader->close();
+        }
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+        if ($errors !== []) {
             throw new RuntimeException("El XML generado no es válido [{$path}].");
         }
-        libxml_clear_errors();
     }
 
     private function publish(string $dist, string $temporary): void

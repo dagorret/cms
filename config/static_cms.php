@@ -53,7 +53,7 @@ return [
     'menu_max_depth' => env('STATIC_MENU_MAX_DEPTH', 3),
 
     // ⚡ Rendimiento de Construcción Masiva (Etapa 1)
-    'build_chunk_size' => env('STATIC_BUILD_CHUNK', 2000),
+    'build_chunk_size' => env('STATIC_BUILD_CHUNK_SIZE', env('STATIC_BUILD_CHUNK', 1000)),
 
     // 📄 Límites de la Portada HTML (Etapa 2)
     'home_first_page_posts' => env('STATIC_HOME_FIRST_PAGE_POSTS', 10),

@@ -13,6 +13,7 @@ use App\Services\StaticSchemaGenerator;
 use App\Services\StaticViteAssetPublisher;
 use App\Services\StaticViteAssetResolver;
 use App\Support\StaticViteAssets;
+use FilesystemIterator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
@@ -49,11 +50,14 @@ class SiteBuildCommand extends Command
 
     protected ?string $staticOutputSignature = null;
 
+    protected bool $resourceEnabled = false;
+
     public function handle(): int
     {
         $siteIdentifier = trim((string) $this->argument('site_id'));
         $force = (bool) $this->option('force');
         $resource = (bool) $this->option('resource');
+        $this->resourceEnabled = $resource;
 
         try {
             $site = $this->resolveSite($siteIdentifier);
@@ -79,6 +83,7 @@ class SiteBuildCommand extends Command
 
         $this->info("🚀 [Orquestador NASA] Iniciando para: {$site->long_name} | Sitio: {$site->short_name} | Scope: {$section}");
         $this->comment("   📁 DIST_PATH: {$targetFolder}");
+        $this->resourceSnapshot('inicio');
 
         if ($postId !== null) {
             $this->publishKatexAssets($targetFolder);
@@ -152,22 +157,17 @@ class SiteBuildCommand extends Command
             })
             ->count();
 
-        $perPage = 2000;
-        $totalPages = ceil($totalEntries / $perPage) ?: 1;
+        $perPage = $this->buildChunkSize();
+        $totalPages = (int) (ceil($totalEntries / $perPage) ?: 1);
 
         $this->info("📊 Registros sucios/pendientes en BD: {$totalEntries} | Bloques: {$perPage} | Páginas a procesar: ".($totalEntries > 0 ? $totalPages : 0));
 
-        $currentPage = 0;
         $processedCount = 0;
-        $lastId = 0;
 
-        while ($currentPage < $totalPages && $totalEntries > 0) {
-            // Query ultra veloz usando la Base de Datos como Fuente de Verdad Primaria
-            $postsChunk = $this->publishedSitePosts($site)
-                ->where('id', '>', $lastId)
+        if ($totalEntries > 0) {
+            $query = $this->publishedSitePosts($site)
                 ->with('category.parent')
                 ->when($section === 'posts', fn ($query) => $this->scopeOnlyPosts($query))
-                // ⚡ Incrementalidad inteligente: si no es force, solo trae lo sucio
                 ->when(! $rebuildAllEntries, function ($query) {
                     $query->where(function ($q) {
                         $q->whereNull('static_built_at')
@@ -175,39 +175,23 @@ class SiteBuildCommand extends Command
                     });
                 })
                 ->orderBy('id', 'asc')
-                ->select($this->entryColumns())
-                ->take($perPage)
-                ->get();
+                ->select($this->entryColumns());
 
-            if ($postsChunk->isEmpty()) {
-                break;
-            }
-
-            // Compilamos los HTMLs (ya no gasta I/O de disco preguntando fechas de archivos)
-            $compiler->compile($postsChunk);
-
-            // Actualización masiva de la marca de tiempo de compilación estática (Corregido)
-            $chunkIds = $postsChunk->pluck('id')->toArray();
-            Post::whereIn('id', $chunkIds)->update([
-                'static_built_at' => now(),
-            ]);
-
-            $lastId = end($chunkIds);
-            $processedCount += $postsChunk->count();
-
-            if ($resource) {
-                $ram = round(memory_get_usage(true) / 1024 / 1024, 2);
-                $time = round(microtime(true) - $this->startedAt(), 2);
-                $this->comment('   ⏱️ [Lote Incremental] Bloque '.($currentPage + 1)."/{$totalPages} completo | Procesados: {$processedCount} | RAM: {$ram} MB | Tiempo: {$time}s");
-            }
-
-            unset($postsChunk, $chunkIds);
-            gc_collect_cycles();
-
-            $currentPage++;
+            $batch = 0;
+            $query->chunkById($perPage, function ($postsChunk) use ($compiler, &$processedCount, &$batch, $totalPages): void {
+                $compiler->compile($postsChunk);
+                $chunkIds = $postsChunk->modelKeys();
+                Post::query()->whereKey($chunkIds)->update(['static_built_at' => now()]);
+                $processedCount += count($chunkIds);
+                $batch++;
+                $this->resourceSnapshot('posts', $processedCount, $batch, $totalPages);
+                unset($chunkIds);
+                gc_collect_cycles();
+            }, 'id');
         }
 
         $this->info('✔️ Fin del procesamiento de HTMLs individuales.');
+        $this->resourceSnapshot('posts', $processedCount, $totalEntries > 0 ? (int) ceil($processedCount / $perPage) : 0);
 
         // ===================================================================
         // 📦 ETAPA 2: ESTRUCTURAS GLOBALES (Se actualizan siempre rápido)
@@ -233,6 +217,7 @@ class SiteBuildCommand extends Command
         $this->info("⏱️  Tiempo total de ejecución: {$executionTime} segundos");
         $this->info("🧠 Pico máximo de memoria RAM: {$peakMemory} MB / 512 MB");
         $this->info('-------------------------------------------------------');
+        $this->resourceSnapshot('fin', $processedCount);
 
         return Command::SUCCESS;
     }
@@ -300,38 +285,13 @@ class SiteBuildCommand extends Command
     {
         $this->info('📦 Regenerando índices globales dinámicos (JSON, Portadas, Sitemap)...');
 
-        $lightColumns = [
-            'id',
-            'slug',
-            'title',
-            'body',
-            'type',
-            'category_id',
-            'keywords',
-            'created_at',
-            'updated_at',
-        ];
-
-        if (Schema::hasColumn('posts', 'has_math')) {
-            $lightColumns[] = 'has_math';
-        }
-
-        $allEntriesLight = $this->publishedSitePosts($site)
-            ->with('category.parent')
-            ->select($lightColumns)
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $posts = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_POST);
-        $pages = $allEntriesLight->filter(fn ($entry) => $entry->type === Post::TYPE_PAGE);
-
         $generator = new StaticSchemaGenerator(
             $this,
             $site,
             $targetFolder,
             $this->resolvedStaticAssets(),
         );
-        $generator->build($posts, $pages, $allEntriesLight);
+        $generator->build();
     }
 
     protected function finalizeSinglePostBuild(Site $site, string $targetFolder): int
@@ -355,6 +315,25 @@ class SiteBuildCommand extends Command
     protected function startedAt(): float
     {
         return defined('LARAVEL_START') ? (float) constant('LARAVEL_START') : microtime(true);
+    }
+
+    public function resourceSnapshot(string $phase, int $records = 0, int $batches = 0, ?int $totalBatches = null): void
+    {
+        if (! $this->resourceEnabled) {
+            return;
+        }
+
+        $used = round(memory_get_usage(false) / 1024 / 1024, 2);
+        $current = round(memory_get_usage(true) / 1024 / 1024, 2);
+        $peak = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        $elapsed = round(microtime(true) - $this->startedAt(), 2);
+        $batchText = $totalBatches === null ? (string) $batches : "{$batches}/{$totalBatches}";
+        $this->comment("   ⏱️ [{$phase}] procesados={$records} lotes={$batchText} uso={$used} MB memoria={$current} MB pico={$peak} MB tiempo={$elapsed}s");
+    }
+
+    protected function buildChunkSize(): int
+    {
+        return min(max((int) config('static_cms.build_chunk_size', 1000), 100), 5000);
     }
 
     protected function resolveSite(string $siteIdentifier): Site
@@ -494,34 +473,26 @@ class SiteBuildCommand extends Command
 
     protected function synchronizePublishedEntryFolders(Site $site, string $targetFolder): int
     {
-        $activeSlugs = $this->activePublishedSlugMap($site);
         $deleted = 0;
+        $batch = [];
+        $chunkSize = $this->buildChunkSize();
 
-        foreach (File::directories($targetFolder) as $directory) {
-            if (is_link($directory)) {
-                $this->warn("⚠️  Se omite enlace simbolico durante la limpieza de entradas [{$directory}].");
-
-                continue;
-            }
-
+        foreach ($this->entryDirectories($targetFolder) as $directory) {
             $manifest = $this->entryManifest($directory);
-
             if (! $this->isManagedEntryDirectory($directory, $manifest)) {
                 continue;
             }
-
             if ($manifest !== [] && ! $this->entryManifestBelongsToSite($manifest, $site)) {
                 continue;
             }
-
-            $slug = $this->entrySlugFromDirectory($directory, $manifest);
-
-            if ($slug !== '' && isset($activeSlugs[$slug])) {
-                continue;
+            $batch[] = ['directory' => $directory, 'manifest' => $manifest];
+            if (count($batch) >= $chunkSize) {
+                $deleted += $this->synchronizeEntryBatch($site, $targetFolder, $batch);
+                $batch = [];
             }
-
-            $this->deleteManagedEntryDirectory($targetFolder, $directory);
-            $deleted++;
+        }
+        if ($batch !== []) {
+            $deleted += $this->synchronizeEntryBatch($site, $targetFolder, $batch);
         }
 
         if ($deleted > 0) {
@@ -531,16 +502,67 @@ class SiteBuildCommand extends Command
         return $deleted;
     }
 
-    protected function activePublishedSlugMap(Site $site): array
+    /** @param list<array{directory:string,manifest:array}> $batch */
+    protected function synchronizeEntryBatch(Site $site, string $targetFolder, array $batch): int
     {
-        return $this->publishedSitePosts($site)
-            ->whereNotNull('slug')
-            ->pluck('slug')
-            ->map(fn (mixed $slug): string => trim((string) $slug, '/\\'))
-            ->filter(fn (string $slug): bool => $slug !== '')
-            ->unique()
-            ->mapWithKeys(fn (string $slug): array => [$slug => true])
-            ->all();
+        $ids = [];
+        $slugs = [];
+        foreach ($batch as $entry) {
+            $id = filter_var($entry['manifest']['post_id'] ?? null, FILTER_VALIDATE_INT);
+            $slug = $this->entrySlugFromDirectory($entry['directory'], $entry['manifest']);
+            if ($id !== false && $id !== null) {
+                $ids[] = (int) $id;
+            } elseif ($slug !== '') {
+                $slugs[] = $slug;
+            }
+        }
+
+        $activeIds = [];
+        $activeSlugs = [];
+        $query = $this->publishedSitePosts($site)->select(['id', 'slug']);
+        $query->where(function ($active) use ($ids, $slugs): void {
+            if ($ids !== []) {
+                $active->whereIn('id', $ids);
+            }
+            if ($slugs !== []) {
+                $ids === [] ? $active->whereIn('slug', $slugs) : $active->orWhereIn('slug', $slugs);
+            }
+        });
+        foreach ($query->cursor() as $post) {
+            $activeIds[(int) $post->id] = trim((string) $post->slug, '/\\');
+            $activeSlugs[trim((string) $post->slug, '/\\')] = true;
+        }
+
+        $deleted = 0;
+        foreach ($batch as $entry) {
+            $id = filter_var($entry['manifest']['post_id'] ?? null, FILTER_VALIDATE_INT);
+            $slug = $this->entrySlugFromDirectory($entry['directory'], $entry['manifest']);
+            $active = $id !== false && $id !== null
+                ? (($activeIds[(int) $id] ?? null) === $slug)
+                : isset($activeSlugs[$slug]);
+            if (! $active) {
+                $this->deleteManagedEntryDirectory($targetFolder, $entry['directory']);
+                $deleted++;
+            }
+        }
+
+        return $deleted;
+    }
+
+    /** @return \Generator<int, string> */
+    protected function entryDirectories(string $targetFolder): \Generator
+    {
+        $iterator = new FilesystemIterator($targetFolder, FilesystemIterator::SKIP_DOTS);
+        foreach ($iterator as $entry) {
+            if ($entry->isLink()) {
+                $this->warn("⚠️  Se omite enlace simbolico durante la limpieza de entradas [{$entry->getPathname()}].");
+
+                continue;
+            }
+            if ($entry->isDir()) {
+                yield $entry->getPathname();
+            }
+        }
     }
 
     protected function isManagedEntryDirectory(string $directory, array $manifest): bool
@@ -580,7 +602,7 @@ class SiteBuildCommand extends Command
 
     protected function hasManagedEntryForPost(Site $site, string $targetFolder, int $postId): bool
     {
-        foreach (File::directories($targetFolder) as $directory) {
+        foreach ($this->entryDirectories($targetFolder) as $directory) {
             $manifest = $this->entryManifest($directory);
 
             if ($manifest === [] || ! $this->entryManifestBelongsToSite($manifest, $site)) {
@@ -772,9 +794,8 @@ class SiteBuildCommand extends Command
 
     protected function hasManagedEntryOtherThan(string $targetFolder, string $slug): bool
     {
-        foreach (File::directories($targetFolder) as $directory) {
-            if (is_link($directory)
-                || in_array(basename($directory), self::STRUCTURAL_DIRECTORIES, true)
+        foreach ($this->entryDirectories($targetFolder) as $directory) {
+            if (in_array(basename($directory), self::STRUCTURAL_DIRECTORIES, true)
                 || $this->entryManifest($directory) === []) {
                 continue;
             }
@@ -975,7 +996,7 @@ class SiteBuildCommand extends Command
         }
 
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($destinationPath, \FilesystemIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator($destinationPath, FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::LEAVES_ONLY,
         );
 

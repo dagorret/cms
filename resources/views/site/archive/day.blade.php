@@ -10,17 +10,9 @@
             <p class="text-[1.05rem] leading-[1.68] text-[#333333] dark:text-[#cbc4b8]">{{ $totalPosts }} publicaciones registradas en esta fecha.</p>
         </header>
 
-        <ol>
+        <ol>{!! $postsStreamMarker ?? '' !!}
             @foreach($posts as $post)
-                <li class="border-b border-[#d8d0c3] py-[18px] dark:border-[#4a4640]">
-                    <a href="{{ $subdirUrl }}/{{ $post->slug }}/" class="flex items-center justify-between gap-6 decoration-[#0f4c5c]/35 underline-offset-[3px] hover:text-[#0f4c5c] max-[900px]:items-start dark:hover:text-[#8fc3cf]">
-                        <span class="font-serif text-[1.55rem] font-bold leading-[1.12] tracking-[-.03em]">{{ $post->title }}</span>
-                        <span class="font-sans text-[.86rem] text-[#66615a] dark:text-[#aaa298]">
-                            @if($post->category){{ $post->category->name }} · @endif
-                            <time datetime="{{ $post->created_at->format('Y-m-d') }}">{{ $post->created_at->format('Y-m-d') }}</time>
-                        </span>
-                    </a>
-                </li>
+                @include('site.archive.partials.post', ['post' => $post, 'subdirUrl' => $subdirUrl])
             @endforeach
         </ol>
     </section>
