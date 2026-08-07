@@ -1,0 +1,161 @@
+Sí, pero con una distinción importante: yo haría que Faro pueda administrar temas/plantillas desde el CMS, pero no convertiría inmediatamente Blade en “contenido de base de datos”.
+
+Porque Blade no es solo HTML. Esto:
+
+{{ $post->title }}
+
+@foreach($posts as $post)
+    ...
+@endforeach
+
+puede terminar llegando a ejecutar PHP. Un editor Blade completamente libre dentro de /dash equivale prácticamente a dar acceso de ejecución de código al administrador.
+
+Arquitectónicamente, sin embargo, encaja muchísimo con Faro. Hoy tenés:
+
+SQLite
+  ├── posts
+  ├── pages
+  ├── categories
+  ├── menus
+  └── sites
+
+filesystem
+  └── resources/views/site/
+       ├── layouts/app.blade.php
+       ├── posts/show.blade.php
+       ├── page.blade.php
+       ├── category.blade.php
+       └── ...
+
+Podrías evolucionar hacia:
+
+FARO
+├── Contenido
+├── Medios
+├── Categorías
+├── Menús
+├── Sitios
+└── Apariencia
+     └── Temas
+          ├── Layout
+          ├── Post
+          ├── Page
+          ├── Home
+          ├── Categoría
+          ├── Archivo
+          ├── 404
+          ├── CSS
+          └── JS
+
+Y esto se vuelve todavía más interesante con el constructor diferencial que acabamos de imaginar.
+
+Si modificás:
+
+post #42
+
+Faro invalida solamente los artefactos dependientes de ese post.
+
+Pero si modificás:
+
+posts/show.blade.php
+
+entonces:
+
+template posts/show
+      ↓
+cambia template_hash
+      ↓
+todos los HTML de type=post quedan stale
+
+Mientras que modificar:
+
+page.blade.php
+
+invalidaría solamente:
+
+type=page
+
+Y cambiar:
+
+layouts/app.blade.php
+
+sí podría marcar prácticamente todo el sitio como stale.
+
+Ahí los templates pasan a ser otra entrada del grafo de dependencias de Faro.
+
+Yo incluso imaginaría algo así para V3:
+
+input hash del post
+        +
+template hash
+        +
+layout hash
+        +
+renderer hash
+        +
+SEO version
+        ↓
+     artifact hash
+
+Entonces Faro sabe con certeza si /mi-post/index.html sigue siendo válido.
+
+Sobre dónde guardar los Blade, inicialmente mantendría los .blade.php en filesystem y Git. El CMS podría administrarlos desde una interfaz, pero escribiría esos archivos controladamente. Eso conserva cosas valiosas:
+
+Git diff
+historial
+rollback
+IDE
+syntax highlighting
+deploy reproducible
+
+No metería todavía:
+
+templates.body
+
+en SQLite como única fuente. Sería cómodo, pero perderíamos bastante de lo que hace atractivo trabajar con plantillas como código.
+
+Más adelante sí podría existir un sistema de themes Faro, por ejemplo:
+
+resources/views/themes/
+├── dagorret/
+│   ├── theme.json
+│   ├── layouts/
+│   ├── posts/
+│   ├── pages/
+│   └── partials/
+│
+└── minimal/
+    └── ...
+
+y en Sites:
+
+Sitio: Dagorret
+Tema: dagorret
+
+Desde Filament podrías:
+
+elegir tema;
+duplicar tema;
+editar plantillas;
+editar CSS;
+previsualizar;
+restaurar;
+ver qué outputs quedarían invalidados;
+ejecutar rebuild diferencial.
+
+Ese último punto sería hermoso:
+
+Guardaste posts/show.blade.php
+
+Esta modificación afecta:
+  96 posts publicados
+  0 pages
+  7 páginas de categorías
+  1 home
+  1 feed
+
+[Compilar afectados]
+
+Ahí Faro deja de ser solamente CMS + static generator y empieza a tener un verdadero sistema de compilación dependiente del contenido.
+
+Yo lo pondría en V3, pero después del profiling y del constructor diferencial. Porque una vez que exista el mecanismo de hashes/invalidation, integrar los templates al CMS se vuelve mucho más limpio: un Blade pasa a ser simplemente otro input versionado del build.
