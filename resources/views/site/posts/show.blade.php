@@ -1,6 +1,32 @@
 @extends('site.layouts.app')
 
 @section('title', $post->title)
+@section('description', $post->getExcerpt(30))
+@section('og_type', 'article')
+@section('article_published_time', (string) (($post->published_at ?? $post->created_at)?->toAtomString()))
+@section('article_modified_time', (string) ($post->updated_at?->toAtomString()))
+@if($post->category)
+@section('article_section', $post->category->name)
+@endif
+
+@section('jsonld')
+@php
+    $articleUrl = $site->publicUrl($canonicalPath ?? $post->slug);
+    $articleLd = array_filter([
+        '@context' => 'https://schema.org',
+        '@type' => 'Article',
+        'headline' => $post->title,
+        'description' => $post->getExcerpt(30),
+        'datePublished' => ($post->published_at ?? $post->created_at)?->toAtomString(),
+        'dateModified' => $post->updated_at?->toAtomString(),
+        'author' => ['@type' => 'Person', 'name' => 'Carlos Dagorret'],
+        'articleSection' => $post->category->name ?? null,
+        'url' => $articleUrl,
+        'mainEntityOfPage' => $articleUrl,
+    ], fn ($value) => $value !== null && $value !== '');
+@endphp
+<script type="application/ld+json">{!! json_encode($articleLd, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!}</script>
+@endsection
 
 @section('content')
 @php

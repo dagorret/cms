@@ -326,24 +326,12 @@ final class StaticSitemapGenerator
 
     private function publicPath(Site $site): string
     {
-        $path = trim((string) $site->subdir, '/');
-
-        return ($path === '' || $path === 'dist') ? '' : '/'.$path;
+        return $site->publicPath();
     }
 
     private function baseUrl(Site $site): string
     {
-        $domain = rtrim(trim((string) $site->domain), '/');
-
-        if (! preg_match('#^https?://#i', $domain)) {
-            $host = strtolower(strtok($domain, '/'));
-            $scheme = $host === 'localhost' || str_starts_with($host, '127.') || str_starts_with($host, '[')
-                ? 'http://'
-                : 'https://';
-            $domain = $scheme.$domain;
-        }
-
-        return $domain;
+        return $site->publicOrigin();
     }
 
     private function date(DateTimeInterface|string|null $value): ?string

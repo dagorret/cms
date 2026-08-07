@@ -58,6 +58,7 @@ class StaticContentCompiler
                 'site' => $this->site,
                 'subdir' => $publicPath,
                 'subdirUrl' => $publicPath,
+                'canonicalPath' => trim((string) $entry->slug, '/'),
                 'generatedMenu' => $menuRenderer->renderStructure($menuStructure, rtrim($publicPath, '/').'/'.$entry->slug.'/'),
                 'staticAssets' => $this->staticAssets,
                 'hasMath' => $hasMath,
@@ -81,13 +82,7 @@ class StaticContentCompiler
 
     protected function publicPath(): string
     {
-        $path = trim((string) $this->site->subdir, '/');
-
-        if ($path === '' || $path === 'dist') {
-            return '';
-        }
-
-        return '/'.$path;
+        return $this->site->publicPath();
     }
 
     /** @return array{title: string, url: string}|null */

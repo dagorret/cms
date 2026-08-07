@@ -1,13 +1,73 @@
 @php
     $hasMath = (bool) ($hasMath ?? ($post->has_math ?? false));
+
+    // Los @section de más abajo pueden llegar pre-escapados (forma inline "@section('x', $valor)"
+    // pasa por e() al capturarse) o crudos (forma de bloque). Se normaliza decodificando una vez;
+    // Blade vuelve a escapar al emitir con {{ }}, así que el resultado final es siempre consistente.
+    $seoRaw = fn (string $name): string => trim(html_entity_decode((string) ($__env->getSection($name) ?? ''), ENT_QUOTES, 'UTF-8'));
+
+    $seoBrand = 'Carlos Dagorret';
+    $seoSiteName = $site->long_name ?? $site->short_name ?? 'Notas';
+    $seoDefaultDescription = trim((string) ($site->meta_description ?? $site->slogan ?? '')) ?: 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.';
+
+    $seoTitleRaw = $seoRaw('title');
+    $seoTitle = ($seoTitleRaw !== '' ? $seoTitleRaw : $seoSiteName).' — '.$seoBrand;
+    $seoDescription = \Illuminate\Support\Str::limit($seoRaw('description') ?: $seoDefaultDescription, 160, '…');
+    $seoRobots = $seoRaw('robots') ?: 'index, follow';
+    $seoOgType = $seoRaw('og_type') ?: 'website';
+    $seoOgImage = $seoRaw('og_image');
+    $seoCanonicalOverride = $seoRaw('canonical');
+    $seoCanonical = $seoCanonicalOverride !== '' ? $seoCanonicalOverride : (isset($canonicalPath) ? $site->publicUrl($canonicalPath) : '');
+    $seoArticlePublished = $seoRaw('article_published_time');
+    $seoArticleModified = $seoRaw('article_modified_time');
+    $seoArticleSection = $seoRaw('article_section');
 @endphp
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', $site->long_name ?? $site->name ?? 'Notas') — Carlos Dagorret</title>
-    <meta name="description" content="{{ $site->description ?? $site->meta_description ?? 'Archivo técnico-humanista sobre tecnología, sistemas, sociedad, estrategia e infraestructura.' }}">
+    <title>{{ $seoTitle }}</title>
+    <meta name="description" content="{{ $seoDescription }}">
+    <meta name="author" content="{{ $seoBrand }}">
+    <meta name="robots" content="{{ $seoRobots }}">
+    @if($seoCanonical !== '')
+    <link rel="canonical" href="{{ $seoCanonical }}">
+    @endif
+
+    <meta property="og:type" content="{{ $seoOgType }}">
+    <meta property="og:site_name" content="{{ $seoSiteName }}">
+    <meta property="og:locale" content="es_AR">
+    <meta property="og:title" content="{{ $seoTitle }}">
+    <meta property="og:description" content="{{ $seoDescription }}">
+    @if($seoCanonical !== '')
+    <meta property="og:url" content="{{ $seoCanonical }}">
+    @endif
+    @if($seoOgImage !== '')
+    <meta property="og:image" content="{{ $seoOgImage }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="{{ $seoOgImage }}">
+    @else
+    <meta name="twitter:card" content="summary">
+    @endif
+    <meta name="twitter:title" content="{{ $seoTitle }}">
+    <meta name="twitter:description" content="{{ $seoDescription }}">
+
+    @if($seoOgType === 'article')
+    @if($seoArticlePublished !== '')
+    <meta property="article:published_time" content="{{ $seoArticlePublished }}">
+    @endif
+    @if($seoArticleModified !== '')
+    <meta property="article:modified_time" content="{{ $seoArticleModified }}">
+    @endif
+    @if($seoArticleSection !== '')
+    <meta property="article:section" content="{{ $seoArticleSection }}">
+    @endif
+    <meta property="article:author" content="{{ $seoBrand }}">
+    @endif
+
+    @yield('jsonld')
+
     <script>
         (() => { document.documentElement.classList.add('js'); let value = null; try { value = localStorage.getItem('cms-faro-theme'); } catch {} const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false; const dark = value === 'dark' || (value !== 'light' && systemDark); document.documentElement.classList.toggle('dark', dark); document.documentElement.style.colorScheme = dark ? 'dark' : 'light'; })();
     </script>

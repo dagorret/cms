@@ -680,9 +680,7 @@ class SiteBuildCommand extends Command
 
     protected function publicPath(Site $site): string
     {
-        $path = trim((string) $site->subdir, '/');
-
-        return ($path === '' || $path === 'dist') ? '' : '/'.$path;
+        return $site->publicPath();
     }
 
     protected function resolvedStaticAssets(): StaticViteAssets

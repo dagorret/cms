@@ -114,6 +114,7 @@ class StaticSchemaGenerator
             'site' => $this->site,
             'subdir' => $publicPath,
             'subdirUrl' => $publicPath,
+            'canonicalPath' => 'archive',
             'staticAssets' => $this->staticAssets,
             'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, 'archive/')),
         ])->render());
@@ -129,6 +130,7 @@ class StaticSchemaGenerator
                 'site' => $this->site,
                 'subdir' => $publicPath,
                 'subdirUrl' => $publicPath,
+                'canonicalPath' => "archive/{$year}",
                 'staticAssets' => $this->staticAssets,
                 'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/")),
             ])->render());
@@ -147,6 +149,7 @@ class StaticSchemaGenerator
                     'site' => $this->site,
                     'subdir' => $publicPath,
                     'subdirUrl' => $publicPath,
+                    'canonicalPath' => "archive/{$year}/{$month}",
                     'staticAssets' => $this->staticAssets,
                     'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/{$month}/")),
                 ])->render());
@@ -194,6 +197,7 @@ class StaticSchemaGenerator
                     'subdirUrl' => $publicPath,
                     'paginationBaseUrl' => $categoryBaseUrl,
                     'paginationJsonBaseUrl' => $categoryJsonBaseUrl,
+                    'canonicalPath' => $pageNum === 1 ? "category/{$catSlug}" : "category/{$catSlug}/page/{$pageNum}",
                     'staticAssets' => $this->staticAssets,
                     'generatedMenu' => $this->menuHtml($pageNum === 1 ? $categoryBaseUrl.'/' : $categoryBaseUrl."/page/{$pageNum}/"),
                 ];
@@ -253,6 +257,7 @@ class StaticSchemaGenerator
                 'subdirUrl' => $publicPath,
                 'paginationBaseUrl' => $publicPath,
                 'paginationJsonBaseUrl' => $homeJsonBaseUrl,
+                'canonicalPath' => $currentPage === 1 ? '' : "page/{$currentPage}",
                 'staticAssets' => $this->staticAssets,
                 'generatedMenu' => $this->menuHtml($currentPage === 1 ? ($publicPath ?: '/') : $this->joinPublicPath($publicPath, "page/{$currentPage}/")),
             ];
@@ -325,6 +330,7 @@ class StaticSchemaGenerator
             'year' => $year, 'month' => $month, 'day' => $day,
             'posts' => [], 'postsStreamMarker' => $marker, 'totalPosts' => $total,
             'site' => $this->site, 'subdir' => $publicPath, 'subdirUrl' => $publicPath,
+            'canonicalPath' => "archive/{$year}/{$month}/{$day}",
             'staticAssets' => $this->staticAssets,
             'generatedMenu' => $this->menuHtml($this->joinPublicPath($publicPath, "archive/{$year}/{$month}/{$day}/")),
         ])->render());
@@ -502,13 +508,7 @@ class StaticSchemaGenerator
 
     protected function baseUrl(): string
     {
-        $domain = rtrim(trim((string) $this->site->domain), '/');
-        if (! preg_match('#^https?://#i', $domain)) {
-            $host = strtolower(strtok($domain, '/'));
-            $domain = (($host === 'localhost' || str_starts_with($host, '127.') || str_starts_with($host, '[')) ? 'http://' : 'https://').$domain;
-        }
-
-        return $domain;
+        return $this->site->publicOrigin();
     }
 
     protected function resetGeneratedDirectory(string $path): void
@@ -590,9 +590,7 @@ class StaticSchemaGenerator
 
     protected function publicPath(): string
     {
-        $path = trim((string) $this->site->subdir, '/');
-
-        return ($path === '' || $path === 'dist') ? '' : '/'.$path;
+        return $this->site->publicPath();
     }
 
     protected function joinPublicPath(string $publicPath, string $path): string

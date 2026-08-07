@@ -1,6 +1,8 @@
 @extends('site.layouts.app')
 
 @section('title', 'Página no encontrada')
+@section('description', 'La página solicitada no existe o fue movida dentro del archivo estático.')
+@section('robots', 'noindex, nofollow')
 
 @section('content')
     <section class="mt-0 border-t-[3px] border-[#171717] pt-[18px] dark:border-[#e8e1d5]">

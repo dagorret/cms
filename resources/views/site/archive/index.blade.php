@@ -1,6 +1,7 @@
 @extends('site.layouts.app')
 
 @section('title', 'Archivo Histórico')
+@section('description', 'Exploración cronológica de las publicaciones de ' . ($site->long_name ?? 'el sitio') . '.')
 
 @section('content')
     <section class="mt-0 border-t-[3px] border-[#171717] pt-[18px] dark:border-[#e8e1d5]">
