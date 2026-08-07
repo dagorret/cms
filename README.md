@@ -1,276 +1,1188 @@
 # CMS Faro
 
-**El Generador Estático Híbrido de Alto Rendimiento para Sitios Masivos**
+**CMS y generador de sitios estáticos basado en Laravel, Filament y SQLite**
 
 ![PHP](https://img.shields.io/badge/PHP-8.4%2B-777BB4?style=for-the-badge&logo=php&logoColor=white)
-![Laravel](https://img.shields.io/badge/Laravel-13.18.1-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
 ![Filament](https://img.shields.io/badge/Filament-5-FDAE4B?style=for-the-badge&logo=filament&logoColor=white)
-![Build](https://img.shields.io/badge/CLI%20Build-30K%20posts%20%2F%2033s-0B3D91?style=for-the-badge)
-![Throughput](https://img.shields.io/badge/Throughput-~900%20p%C3%A1g%2Fs-9A3412?style=for-the-badge)
-![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-7C3AED?style=for-the-badge)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Static HTML](https://img.shields.io/badge/Output-Static_HTML-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![Debian](https://img.shields.io/badge/Production-Debian-A81D33?style=for-the-badge&logo=debian&logoColor=white)
+![License](https://img.shields.io/badge/license-CC_BY--NC_4.0-7C3AED?style=for-the-badge)
 
 ---
 
-## A) CMS Faro
+## A) ¿Qué es CMS Faro?
 
-CMS Faro es un motor de generación estática de grado de infraestructura diseñado específicamente para resolver el problema de la escala y los costos de cómputo. Permite gestionar millones de artículos estructurados en una base de datos local y transformarlos bajo demanda en una arquitectura estática hiper-optimizada, lista para ser servida directamente por servidores HTTP planos (Nginx/Apache) o plataformas de Hosting Compartido (Shared Hosting), sin penalizaciones de CPU ni dependencias vivas en producción.
+**CMS Faro es un CMS con un generador de sitios estáticos.**
 
-## B) ¿Qué es?
+Laravel, Filament, PHP y SQLite forman el entorno de administración y compilación. No forman parte del sitio público resultante.
 
-Faro es un generador estático híbrido inspirado en la filosofía de libertad absoluta de Hugo y el procesamiento semántico moderno. A diferencia de las plataformas tradicionales pesadas (WordPress, Django) que renderizan las vistas en tiempo real consumiendo recursos en cada petición HTTP, Faro traslada el 100% del costo computacional al momento de la compilación. El resultado final de su ejecución es una estructura de archivos planos HTML y JSON que no requiere base de datos ni intérpretes dinámicos en producción.
+Faro permite escribir, organizar y administrar contenido mediante una interfaz web y luego compilar ese contenido a un árbol de archivos estáticos autocontenido.
 
-## C) ¿Qué hace?
+El resultado de la compilación es `dist/`.
 
-- **Compilación Masiva Ultra-Veloz:** procesa más de 30.000 artículos en un tiempo récord de T = 33s utilizando un solo hilo síncrono de ejecución en CLI (~900 posts/s).
-- **Purga Quirúrgica del HTML:** implementa un `StaticHtmlCleaner` nativo que procesa, unifica etiquetas y remueve código fantasma en memoria RAM antes de escribir en disco.
-- **Inyección Dinámica de Metadatos:** precalcula índices, estructuras de taxonomías, esquemas estructurados JSON-LD y mapas de navegación sin realizar consultas redundantes a la base de datos.
-- **Independencia del Servidor:** distribuye el contenido para que pueda ser alojado de manera inmediata en arquitecturas de bajo costo, eliminando cuellos de botella por inodos.
+Dentro de `dist/` viven los HTML, CSS, JavaScript, XML, JSON, imágenes y demás recursos que constituyen el sitio publicado.
 
-## D) Flujo Arquitectónico: Posts, Home, Paginación, Feed, Archivo y Páginas
+Una vez terminada la compilación, el sitio público:
 
-El core del compilador organiza el procesamiento en bloques secuenciales optimizados mediante streaming de memoria, para evitar el desbordamiento de RAM en datasets de millones de registros.
+- no ejecuta Laravel;
+- no ejecuta PHP;
+- no consulta SQLite;
+- no necesita Node.js;
+- no necesita workers;
+- no necesita sesiones;
+- no realiza queries para servir una página;
+- no necesita contenedores;
+- no necesita un servidor de aplicaciones.
 
-### 1. Los Posts Simples
+Sólo necesita un servidor capaz de entregar archivos.
 
-Se cargan de la base de datos mediante técnicas de fragmentación masiva (chunking). El motor asocia cada registro a una ruta física e inyecta las variables limpias en su respectiva máscara visual. Cada post genera su contraparte indexada en formato `.json` para dar soporte a transiciones SPA instantáneas en el lado del cliente.
+Nginx, Apache, Caddy, un CDN, object storage o un hosting estático son suficientes.
 
-### 2. El Home y la Paginación
+En ese sentido, el resultado de Faro pertenece a la misma familia conceptual que los sitios generados por **Hugo, Astro, Pelican o Jekyll**.
 
-La página principal se construye bajo un esquema dinámico de indexación. El motor calcula el total de artículos y divide el árbol de contenidos en segmentos fijos. Genera la página raíz (`index.html`) y las páginas de navegación secuencial (`page/2/index.html`, `page/3/index.html`) de forma automatizada, calculando los punteros previos y siguientes de forma estática.
+La diferencia principal está en la experiencia de autoría: Faro utiliza un CMS web y una base SQLite como fuente editorial.
 
-### 3. El Archivo Histórico
+> **Faro necesita PHP, Laravel y SQLite para administrar y construir el sitio. El sitio publicado no necesita ninguno de ellos.**
 
-El módulo de archivo compacta la totalidad de la metadata histórica en agrupaciones optimizadas por años, meses o categorías. En lugar de generar miles de páginas para índices, crea un mapa consolidado que reduce drásticamente el consumo físico de bloques del sistema de archivos.
+---
 
-### 4. El Feed RSS / Atom y Sitemaps
+## B) La arquitectura
 
-Emana de forma directa un archivo de sindicación XML estructurado con los últimos artículos procesados junto con un mapa del sitio indexado completo (`sitemap.xml`), fragmentado para cumplir estrictamente con los estándares de indexación de motores de búsqueda masivos, sin procesamiento en tiempo de ejecución.
+La separación entre administración y publicación es deliberada.
 
-### 5. Las Páginas Estáticas
+```text
+                 AUTORÍA / ADMINISTRACIÓN
 
-Las secciones institucionales independientes (Contacto, Quiénes Somos, Políticas) omiten las restricciones de las líneas de tiempo cronológicas y se compilan directamente desde sus propios esquemas planos en el directorio de salida.
+        ┌───────────────────────────────┐
+        │           CMS Faro            │
+        │                               │
+        │ Laravel + Filament            │
+        │ SQLite                        │
+        │ EditorJS                      │
+        │ Markdown / HTML               │
+        │ Media Library                 │
+        │ MathJax                       │
+        └───────────────┬───────────────┘
+                        │
+                        │ site:build
+                        ▼
+        ┌───────────────────────────────┐
+        │             dist/             │
+        │                               │
+        │ HTML                          │
+        │ CSS                           │
+        │ JavaScript                    │
+        │ XML / JSON                    │
+        │ imágenes y medios             │
+        └───────────────┬───────────────┘
+                        │
+                        │ publicación
+                        ▼
 
-## E) El CMS y el Editor Trix
+                     PRODUCCIÓN
 
-El panel administrativo de entrada de datos utiliza una interfaz limpia y minimalista potenciada por el editor enriquecido Trix de Basecamp, embebido dentro de un panel construido sobre **Filament 5**. La lógica de persistencia está diseñada para almacenar código HTML plano y semántico, evitando la inyección de estilos embebidos (inline styles) o clases propietarias de editores complejos. Esto garantiza que el contenido almacenado en la base de datos esté "puro", actuando como la fuente única de verdad lista para ser procesada por el compilador.
+        ┌───────────────────────────────┐
+        │            Nginx              │
+        │                               │
+        │     archivos estáticos        │
+        └───────────────────────────────┘
 
-## F) Fundamento de la Estructura Web
-
-Cada elemento estructural de Faro responde a una razón técnica de SEO, pero también a un principio más antiguo, propio de las teorías clásicas de la comunicación y la edición periodística. La disciplina editorial de los grandes medios no nació con internet: preexiste a ella, y Faro la traduce a la infraestructura de un sitio estático.
-
-- **Home Principal:** el punto de entrada central optimizado para SEO que provee la máxima autoridad de dominio (Link Juice) hacia los contenidos más frescos. Editorialmente, replica la lógica de la **pirámide invertida** del periodismo clásico —lo más relevante y reciente arriba, lo secundario debajo— aplicada no a un artículo, sino a la jerarquía de todo el sitio.
-- **Paginación Secuencial:** obligatoria para permitir que los rastreadores (crawlers) de los buscadores descubran el millón de posts mediante enlaces transitables, sin saturar el presupuesto de rastreo (Crawl Budget) — una aplicación técnica literal del viejo problema de la **economía de la atención**.
-- **Sitemaps XML:** el mapa de navegación explícito que indica a los buscadores la ubicación exacta y la prioridad de indexación de cada URL creada. Es **arquitectura de la información** (en el sentido de Richard Saul Wurman) llevada a un archivo de máquina.
-- **Feeds RSS:** herramienta nativa para la sindicación automatizada de contenidos, alertas en tiempo real y lectura externa descentralizada — la contraparte técnica del ideal editorial de sindicación sin **gatekeeping** algorítmico.
-- **Páginas Independientes:** proveen la estructura de confianza, legitimidad legal y puntos de contacto fijos necesarios para la validación algorítmica del sitio — el equivalente digital del pie de imprenta.
-
-## G) Personalización y Ajustes vía Blade
-
-El motor ofrece un entorno de abstracción libre. El diseñador trabaja sobre plantillas puras de Laravel Blade que no imponen reglas estructurales rígidas. Al compilar, las directivas se resuelven en el entorno local convirtiéndose en strings planos. Para modificar la cabecera, la navegación o el pie de página, basta con alterar los componentes de vistas:
-
-```blade
-{{-- resources/views/components/navigation.blade.php --}}
-<nav class="menu-faro">
- @foreach(config('static_cms.menus.principal') as $item)
- <a href="{{ $item['url'] }}">{{ $item['title'] }}</a>
- @endforeach
-</nav>
+              PHP        ✗
+              Laravel    ✗
+              SQLite     ✗
+              Node.js    ✗
+              workers    ✗
+              sesiones   ✗
+              queries    ✗
 ```
 
-## H) Gestión de Assets
+El CMS puede incluso estar temporalmente fuera de servicio después de una compilación y el sitio público continuará funcionando normalmente.
 
-Todos los recursos estáticos (CSS minificado, JavaScript de la SPA, fuentes tipográficas e imágenes optimizadas) residen originalmente en el directorio de desarrollo `resources/`. Al ejecutar el compilador, estos recursos son procesados por Vite y clonados de forma directa en la raíz de salida: `dist/assets/`. Las rutas generadas en los HTML estáticos apuntan siempre a estas ubicaciones absolutas o relativas directas, eliminando la necesidad de reescritura de URLs en el servidor.
+`dist/` es el producto de Faro.
 
-## I) Destino de la Compilación
+---
 
-La ejecución completa del comando genera un único directorio autocontenido denominado `dist/` en la raíz del proyecto:
+## C) SQLite como fuente editorial
 
+Faro utiliza **SQLite** como fuente de verdad del contenido.
+
+Esto elimina la necesidad de mantener un servidor MySQL, PostgreSQL u otro servicio de base de datos independiente para el CMS.
+
+La base editorial es esencialmente un archivo:
+
+```text
+database/database.sqlite
 ```
+
+Allí se almacenan los sitios, posts, páginas, categorías, etiquetas y demás estructuras editoriales.
+
+Los medios viven separadamente en:
+
+```text
+storage/app/public/
+```
+
+Esta arquitectura tiene una consecuencia operativa importante:
+
+> **Respaldar Faro consiste fundamentalmente en respaldar un archivo SQLite y el directorio de medios.**
+
+El sitio generado (`dist/`) es reproducible y puede volver a construirse a partir de esos datos.
+
+---
+
+## D) Edición de contenido
+
+Faro permite trabajar con diferentes formas de contenido sin acoplar el sitio publicado al editor utilizado para crearlo.
+
+El CMS soporta:
+
+- **EditorJS**, para edición estructurada por bloques;
+- **Markdown**, incluyendo bloques Markdown dentro de EditorJS;
+- **HTML enriquecido**, cuando se utiliza el editor correspondiente;
+- imágenes y medios mediante **Spatie Media Library**;
+- fórmulas matemáticas mediante **MathJax**.
+
+El contenido es normalizado durante el proceso de renderizado y posteriormente convertido al HTML estático que se publica.
+
+### Matemáticas
+
+Los posts pueden marcarse como contenido matemático y utilizar expresiones LaTeX, tanto inline como display:
+
+```latex
+$E = mc^2$
+```
+
+o:
+
+```latex
+$$
+D = \operatorname{diag}(d_1, d_2, \dots, d_n)
+$$
+```
+
+MathJax se incorpora únicamente donde corresponde, evitando imponer ese costo al resto del sitio.
+
+---
+
+## E) Modelo editorial
+
+Faro diferencia la naturaleza del contenido de su clasificación editorial.
+
+Los tipos estructurales principales son:
+
+```text
+post
+page
+```
+
+Los posts pueden pertenecer a categorías administrables desde el CMS.
+
+Las categorías son datos reales de la base y no constantes hardcodeadas en la aplicación. Esto permite ampliar y reorganizar la estructura editorial sin modificar código.
+
+Faro también dispone de etiquetas para relaciones editoriales adicionales.
+
+El objetivo es mantener una estructura sencilla:
+
+```text
+Sitio
+ ├── Posts
+ │    ├── Categoría
+ │    └── Tags
+ │
+ ├── Pages
+ ├── Menús
+ └── Medios
+```
+
+---
+
+## F) Generación estática
+
+Faro traslada el costo computacional al momento de publicación.
+
+Cuando se ejecuta una compilación, el motor lee SQLite, renderiza las plantillas Blade y escribe el resultado final en el filesystem.
+
+El servidor público no realiza ese trabajo nuevamente por cada visitante.
+
+Conceptualmente:
+
+```text
+modelo + contenido + Blade
+            │
+            ▼
+         compiler
+            │
+            ▼
+          HTML
+            │
+            ▼
+          dist/
+```
+
+Esto transforma un problema de renderizado dinámico por petición en un problema de compilación.
+
+La misma página solicitada diez, cien o diez millones de veces continúa siendo el mismo archivo.
+
+---
+
+## G) Qué genera Faro
+
+Una compilación completa puede generar, entre otras estructuras:
+
+- posts individuales;
+- páginas;
+- portada;
+- paginación;
+- categorías;
+- archivo histórico;
+- feeds;
+- sitemap;
+- datos estructurados;
+- assets;
+- medios necesarios para la publicación.
+
+Una estructura simplificada puede verse así:
+
+```text
 dist/
-├── assets/     # CSS, JS e imágenes optimizadas
-├── data/        # Micro-JSONs individuales para la Hydra SPA
-├── category/   # JSONs indexados por etiquetas y taxonomías
-├── page/       # HTMLs de la paginación secuencial (/page/2/, etc.)
-├── index.html  # Home del sitio web
-├── sitemap.xml # Mapa de indexación para buscadores
-└── [slug-del-post].html  # Los 30.000+ artículos planos individuales
+├── index.html
+├── page/
+│   ├── 2/
+│   │   └── index.html
+│   └── ...
+├── categoria/
+│   └── ...
+├── archivo/
+│   └── ...
+├── slug-del-post/
+│   └── index.html
+├── assets/
+├── media/
+├── feed.xml
+└── sitemap.xml
 ```
 
-## J) Configuración General (`config/static_cms.php`)
-
-Toda la lógica operacional del motor se controla centralizadamente a través de un archivo de configuración nativo en PHP:
-
-```php
-<?php
-return [
-    'build_output_path' => base_path('dist'),
-    'posts_per_page' => 15,
-    'minify_html' => true,
-    'menus' => [
-        'principal' => [
-            ['title' => 'Inicio', 'url' => '/'],
-            ['title' => 'Archivo', 'url' => '/archive'],
-        ],
-        'footer' => [
-            ['title' => 'Privacidad', 'url' => '/privacy'],
-        ]
-    ]
-];
-```
-
-## K) Entorno Dockerizado
-
-Para asegurar un ambiente de compilación determinista e independiente del sistema operativo del desarrollador, CMS Faro provee una receta de Docker optimizada con soporte completo para la CLI de **PHP 8.4+** y Node.js en la misma capa de ejecución, permitiendo procesar el backend y los assets en paralelo sin fricciones.
-
-## L) Descarga, Instalación y Arranque
-
-Sigue esta secuencia exacta en tu terminal local para inicializar el entorno y lanzar la compilación masiva:
-
-**1. Clonar el repositorio y levantar contenedores**
-
-```bash
-git clone https://github.com/tu-usuario/cms-faro.git
-cd cms-faro
-docker compose up -d --build
-```
-
-**2. Instalar dependencias e inicializar variables**
-
-### Entorno de Desarrollo (Local)
-
-```bash
-# 1. CONSTRUIR LAS IMÁGENES (Paso inicial obligatorio)
-# Esto lee tus Dockerfiles optimizados y crea el entorno aislado.
-docker compose build
-
-# 2. Copiar variables de entorno locales (¡Antes de levantar nada!)
-cp .env.example .env
-
-# 3. Instalar dependencias iniciales (Usando contenedores temporales)
-docker compose run --rm cms-php composer install
-docker compose run --rm cms-node npm install
-
-# 4. Levantar los contenedores en segundo plano (Modo demonio)
-docker compose up -d
-
-# 5. Generar la clave única de Laravel (En el contenedor de PHP)
-docker compose exec cms-php php artisan key:generate
-
-# 6. Lanzar todo y dejar Vite corriendo en desarrollo (Verás el output en tiempo real)
-docker compose down && docker compose up
-```
-
-### Entorno de Producción
-
-```bash
-# 1. CONSTRUIR LAS IMÁGENES
-docker compose build
-
-# 2. Instalar dependencias de PHP OPTIMIZADAS para producción
-# (--no-dev quita herramientas de desarrollo y acelera el autoloader)
-docker compose run --rm cms-php composer install --no-dev --optimize-autoloader
-
-# 3. Instalar dependencias de Node y COMPILAR assets estáticos
-# (Genera los archivos minificados y listos para el navegador)
-docker compose run --rm cms-node npm install
-docker compose run --rm cms-node npm run build
-
-# --- NOTA CRUCIAL ---
-# Antes del siguiente paso, DEBES configurar tu archivo `.env` definitivo
-# en el servidor con: APP_ENV=production, APP_DEBUG=false y tus contraseñas reales.
-
-# 4. Levantar únicamente el servidor de PHP/Laravel en segundo plano
-# (El contenedor de Node ya no es necesario porque los assets están compilados en la carpeta pública)
-docker compose up -d cms-php
-
-# 5. Optimizar el rendimiento de Laravel (Cachea todo en memoria)
-docker compose exec cms-php php artisan config:cache
-docker compose exec cms-php php artisan route:cache
-docker compose exec cms-php php artisan view:cache
-
-# 6. Correr migraciones de la base de datos de forma segura e indestructible
-docker compose exec cms-php php artisan migrate --force
-```
-
-**3. Ejecutar la compilación del sitio estático**
-
-```bash
-docker compose exec cms-php php artisan site:build
-```
-
-> **Métrica de Ejecución Estándar:** con una base cargada de 30.000 posts, la terminal completará la escritura del directorio `dist/` en 33 segundos, consumiendo un pico máximo estable de memoria RAM de apenas 124 MB, corriendo sobre PHP 8.4+ y Laravel 13.18.1.
->
-> El directorio `dist/` resultante ocupa **~520 MB en disco** para esos 30.000 posts. Esta cifra no es puramente proporcional al peso del contenido: refleja también la sobrecarga estructural propia del sistema de archivos (en este caso, btrfs), producto de la consistencia por inodos y la asignación en bloques de los miles de archivos HTML y JSON individuales que componen la salida.
-
-## M) Estrategia de Despliegue a Producción (VPS o Shared Hosting)
-
-Al ser un sitio web compuesto estrictamente de archivos planos, el despliegue es completamente inmune a fallos de bases de datos relacionales en caliente. Existen dos canales de salida profesionales.
-
-### Opción 1: Sincronización Profesional vía SSH + Rsync (Recomendada para VPS)
-
-Es el método más rápido y eficiente. `rsync` compara los archivos locales con los del servidor en caliente y solo transmite por la red los bytes de los archivos HTML o JSON que sufrieron modificaciones reales. Ejecuta en tu entorno local:
-
-```bash
-rsync -avz --delete dist/ usuario@tu-vps-ip:/var/www/html/tu-sitio/
-```
-
-> Nota: el modificador `--delete` remueve del servidor los artículos que hayas eliminado localmente en la base de datos, manteniendo una simetría exacta.
-
-### Opción 2: Transferencia Convencional vía FTP/SFTP (Apto Shared Hosting)
-
-Si tu destino final es un Hosting Compartido sin acceso a la consola de SSH, empaqueta el directorio `dist/` localmente para evitar la penalización de transferir miles de micro-archivos sueltos uno a uno:
-
-1. Genera un archivo comprimido en tu terminal local: `tar -czvf sitio.tar.gz -C dist .`
-2. Sube el único archivo `sitio.tar.gz` mediante tu cliente FTP (FileZilla, Cyberduck) a la carpeta raíz de tu hosting (habitualmente `public_html/`).
-3. Utiliza el Administrador de Archivos web del panel de tu hosting (cPanel/Plesk) para extraer el archivo comprimido directamente en el servidor. La propagación es instantánea.
-
-## N) Por Qué Creé Faro
-
-### 1. La fricción del flujo editorial tradicional
-
-Antes de Faro estaba Hugo, y con Hugo estaba la fricción. Publicar significaba entrar por SSH y correr el despliegue, o subir el markdown a GitHub y bajarlo del otro lado, o —en el mejor de los casos— sincronizar el sitio completo de forma diferencial vía SSH, pero eso dependía de mi notebook, sólo la mía, y de redes que me permitieran salir por ese puerto. La fricción no se limitaba a los builds masivos; aparecía igual al publicar un artículo sin ninguna complejidad. En términos de teoría editorial clásica, el propio *gatekeeper* —quien decide qué se publica y cuándo— estaba bloqueado por su propia infraestructura técnica.
-
-### 2. El techo tecnológico de las alternativas existentes
-
-La primera idea no fue construir un generador nuevo, sino un frontend de publicación para lo que ya existía: Hugo o Pelican. Los dos tenían un techo estructural. Hugo, pese a su velocidad respaldada en el paralelismo nativo de Go, tiene un consumo de RAM poco predecible a escala porque carga la totalidad del árbol de nodos y taxonomías en memoria: está pensado para el sitio de tamaño humano, no para el millón de posts. Pelican es prolijo, pero su naturaleza síncrona en Python vuelve el tiempo de build un cuello de botella inaceptable a escala real.
-
-### 3. La búsqueda de eficiencia: los grandes medios como referencia, no como modelo
-
-Conviene precisar el orden real de la motivación, porque suele malinterpretarse como afán de imitación: el objetivo **no** era construir "un Home y una lista como los grandes medios". El New York Times y la BBC no fueron el modelo a copiar, sino la **referencia empírica** para formular la pregunta correcta. Lo que se buscaba era **eficiencia** — la pregunta fue "¿cómo resuelven esto los grandes, con la escala que manejan?", no "quiero que mi sitio se vea como el de ellos". Esa distinción importa: convierte la observación de la arquitectura mediática en un método de investigación aplicada (análisis de patrones exitosos bajo restricciones de escala), no en un ejercicio de imitación estética.
-
-Bajo esa lógica, la respuesta que ambos medios dan al problema de distribuir volúmenes masivos —un Home jerárquico y listas paginadas, en lugar de renderizado dinámico por petición— se tomó como hipótesis de eficiencia a validar, no como plantilla a reproducir. Las primeras pruebas se plantearon en Python, Node.js y Rust; la restricción real del destino de producción —Shared Hosting sin runtime persistente— fue lo que inclinó la decisión hacia PHP. Ya tenía un CMS construido en PHP con Filament para la administración de contenido, y en algún momento vi que la capa de publicación podía ser radicalmente óptima sin romper nada de lo que ya funcionaba, sin necesitar la escala de cómputo que sí requieren los grandes medios. La solución, una vez que apareció, fue sencilla.
-
-### 4. La proyección lineal de escala y el comportamiento del hardware
-
-Si 30.000 posts tardan 33 segundos, 1,3 millones de posts —la escala de un medio como el New York Times— tardarían aproximadamente **1.430 segundos (23 minutos y 50 segundos)**, bajo un solo hilo síncrono de CLI. Es una proyección lineal teórica: no incorpora efectos no lineales como la presión sobre el filesystem a medida que crece la cantidad de archivos, ni el costo de I/O sostenido durante casi media hora. Pero como cota superior, alcanza para saber que el orden de magnitud sigue siendo minutos, no horas.
-
-Lo mismo aplica al disco. Los 30.000 posts de la prueba ocupan **~520 MB** en `dist/`, en buena parte por la sobrecarga de consistencia por inodos que introduce btrfs al escribir miles de archivos chicos, más que por el peso bruto del contenido. Proyectado linealmente, 1,3 millones de posts rondarían los **~22,5 GB** — otra cota, no una medición, porque a esa escala el filesystem deja de comportarse linealmente.
-
-**Metodología del stress test:** el `StressTestSeeder` genera el cuerpo de cada post así:
-
-```php
-$cuerpoAleatorio = "## " . $faker->sentence() . "\n\n" . $faker->paragraphs(rand(20, 40), true);
-```
-
-Cada post de prueba lleva entre 20 y 40 párrafos generados por Faker, con la media de la muestra cerca del extremo largo del rango: no es un stress test optimista con posts cortos, sino uno que castiga al compilador con artículos long-form reales.
-
-### 5. Costo de desarrollo
-
-Dediqué 21 días a construir Faro, entre aprender lo básico de Filament y descartar, en el camino, Python y Rust como alternativas. El tiempo final en PHP fue casi ridículo: 33 segundos para 30.000 posts, un hito técnico y también un test de estrés inicial del compilador.
-
-### 6. Filosofía de fondo: iluminar lo escondido
-
-La razón de fondo por la que existe Faro no es de rendimiento, sino de otra clase. Un día le pregunté a los buscadores quién había sido el gobernador de Nueva York en 1904 y qué había hecho durante su gestión. Lo estaba leyendo en otro lado y quería contrastarlo. No encontré nada. El dato existía, en algún archivo, en algún texto — pero no salía a la superficie de internet, porque estaba enterrado demasiado profundo. En términos de ciencia de la información, ese contenido no está en la *dark web* ni oculto deliberadamente: pertenece a lo que se conoce como **deep web informativa** — material real y legítimo, simplemente no rastreable por no estar estructurado para serlo. Ese es, precisamente, el vacío que Faro busca cerrar en la escala de su propio dominio.
-
-Por eso Faro. Su función no es sólo compilar rápido: es iluminar lo que está escondido. Ustedes ya saben cómo hacerlo.
+La estructura exacta depende de la configuración y del sitio compilado.
 
 ---
 
-## Ñ) Licencia de Uso
+## H) Compilación completa, incremental e individual
+
+Faro no necesita reconstruir necesariamente todo el corpus ante cada modificación.
+
+El sistema distingue entre compilaciones completas e incrementales.
+
+### Sitio completo
+
+```bash
+./php artisan site:build ensayos
+```
+
+### Sitio completo forzado
+
+```bash
+./php artisan site:build ensayos --force
+```
+
+### Un único post
+
+```bash
+./php artisan site:build ensayos --post=5
+```
+
+### Un único post forzado
+
+```bash
+./php artisan site:build ensayos --post=5 --force
+```
+
+El CMS registra el estado de compilación y puede evitar regenerar entradas que no cambiaron.
+
+Si detecta que falta físicamente una salida publicada, puede recuperar esa salida aunque el registro figure previamente como compilado.
+
+El objetivo es combinar dos propiedades:
+
+- builds cotidianos pequeños;
+- capacidad de reconstruir el sitio completo cuando sea necesario.
+
+---
+
+## I) Medios
+
+Los medios se administran mediante **Spatie Media Library**.
+
+Faro puede almacenar:
+
+- archivo original;
+- conversiones;
+- previews;
+- responsive images.
+
+El CMS dispone además de una biblioteca de medios para inspeccionar:
+
+- nombre;
+- MIME;
+- tamaño;
+- colección;
+- post propietario;
+- uso actual;
+- fecha.
+
+Los medios referenciados por un post están protegidos contra eliminación accidental desde la biblioteca.
+
+Cuando un archivo deja de estar referenciado puede identificarse como huérfano y eliminarse junto con sus conversiones.
+
+---
+
+# J) Rendimiento y escala
+
+Faro fue diseñado con una premisa concreta: el tamaño del corpus editorial no debería obligar al sitio público a mantener una infraestructura dinámica equivalente.
+
+Las pruebas realizadas muestran además que el consumo de memoria puede mantenerse moderado incluso al procesar cientos de miles de entradas.
+
+Es importante distinguir entre **mediciones reales** y **proyecciones**.
+
+## Benchmark optimizado de 30.000 posts
+
+Una prueba posterior del compilador procesó:
+
+```text
+Posts:          30.000
+Tiempo:         33 segundos
+Memoria pico:   124 MB
+Throughput:     ~900 posts/s
+Salida dist/:   ~520 MB
+```
+
+La prueba se realizó mediante CLI en un único proceso.
+
+El tamaño de `dist/` no representa solamente el peso lógico del HTML. Miles de archivos pequeños introducen overhead de bloques, metadata e inodos en el filesystem utilizado.
+
+---
+
+## Stress test masivo
+
+También se realizó una corrida específicamente orientada a estudiar el comportamiento con un corpus mucho mayor.
+
+La prueba estaba configurada para:
+
+```text
+300.000 posts
+300 lotes
+1.000 posts por lote
+```
+
+El log conservado permite confirmar mediciones hasta **245.000 posts procesados**.
+
+| Posts procesados | Tiempo | Memoria pico | Estado |
+|------------------:|-------:|-------------:|:------|
+| 30.000 | 100,99 s | 74,5 MB | Medido |
+| 100.000 | 341,02 s | 114,5 MB | Medido |
+| 150.000 | 515,47 s | 142,5 MB | Medido |
+| 200.000 | 720,52 s | 170,5 MB | Medido |
+| 245.000 | 885,44 s | 196,5 MB | Medido |
+| 300.000 | ~18 min | ~220–230 MB | Proyección |
+
+A los **245.000 posts**, la corrida llevaba:
+
+```text
+Tiempo:          885,44 s
+                 14 min 45 s
+
+Memoria actual:  187,51 MB
+Memoria pico:    196,5 MB
+```
+
+El throughput observado durante esa prueba se mantuvo aproximadamente entre:
+
+```text
+275–295 posts/s
+```
+
+La línea correspondiente a `300000` no está presente en el log conservado. Por eso los valores de 300K son una **extrapolación**, no un benchmark medido.
+
+### Qué mostró realmente la prueba
+
+La conclusión más interesante no fue el tiempo.
+
+Fue la memoria.
+
+Incluso cerca de un cuarto de millón de posts, el proceso continuaba por debajo de **200 MB de RAM pico**.
+
+El límite práctico comenzó a aparecer antes en otro lugar:
+
+> **filesystem, I/O y cantidad de archivos/inodos.**
+
+Al generar cientos de miles de documentos estáticos, cada entrada termina transformándose en uno o varios objetos físicos del filesystem.
+
+En esa escala empiezan a importar:
+
+- cantidad disponible de inodos;
+- costo de creación de archivos;
+- metadata del filesystem;
+- tamaño de bloque;
+- directorios;
+- I/O sostenido;
+- características de ext4, XFS, btrfs u otro filesystem;
+- estrategia de despliegue.
+
+La aplicación puede continuar teniendo memoria disponible mientras el almacenamiento se convierte en el verdadero cuello de botella.
+
+---
+
+## K) ¿Un millón de posts?
+
+Las pruebas no constituyen un benchmark medido de uno o dos millones de documentos.
+
+Sin embargo, permiten observar una propiedad importante: el consumo de memoria crece suficientemente despacio como para que la RAM no aparezca como el primer límite inmediato.
+
+Con estrategias adecuadas de:
+
+- chunking;
+- consultas selectivas;
+- procesamiento incremental;
+- liberación temprana de colecciones;
+- escritura secuencial;
+- organización del árbol de salida;
+- filesystem dimensionado correctamente;
+- suficiente cantidad de inodos;
+
+un corpus del orden de **1 a 2 millones de documentos** resulta técnicamente abordable sin requerir cantidades extraordinarias de memoria.
+
+Para esas escalas, un horizonte operativo del orden de **2–3 horas** debe entenderse como una **estimación de planificación**, no como un benchmark actualmente demostrado.
+
+La siguiente etapa de optimización de Faro está precisamente orientada a perfilar el compilador y determinar qué funciones retienen memoria, qué estructuras pueden convertirse a streaming y cuánto del tiempo total pertenece realmente a PHP frente al filesystem.
+
+La optimización se hará sobre mediciones, no sobre suposiciones.
+
+---
+
+## L) Metodología del stress test
+
+Los posts utilizados para las pruebas masivas no eran entradas vacías.
+
+El `StressTestSeeder` generó cuerpos de prueba con una estructura equivalente a:
+
+```php
+$cuerpoAleatorio =
+    "## ".$faker->sentence()."\n\n".
+    $faker->paragraphs(rand(20, 40), true);
+```
+
+Cada entrada contenía entre 20 y 40 párrafos generados.
+
+Por lo tanto, el ensayo buscaba aproximarse a artículos long-form y no simplemente medir la creación de archivos HTML vacíos.
+
+---
+
+# M) Backups
+
+Una de las ventajas operativas de utilizar SQLite es que la fuente editorial resulta muy sencilla de respaldar.
+
+Hay dos elementos esenciales:
+
+```text
+database/database.sqlite
+storage/app/public/
+```
+
+`dist/` puede respaldarse si se desea, pero no constituye la fuente de verdad: puede regenerarse.
+
+## Backup de SQLite
+
+Para una instalación con actividad editorial controlada, una copia periódica puede automatizarse mediante cron.
+
+Una opción simple:
+
+```bash
+#!/bin/sh
+
+set -e
+
+BACKUP_DIR="/var/backups/faro"
+STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
+
+mkdir -p "$BACKUP_DIR"
+
+cp /var/www/faro/database/database.sqlite \
+   "$BACKUP_DIR/database-$STAMP.sqlite"
+```
+
+Por ejemplo, mediante cron:
+
+```cron
+0 3 * * * /usr/local/sbin/backup-faro-db
+```
+
+En instalaciones con escrituras concurrentes o donde se quiera garantizar un snapshot consistente mientras SQLite está activo, debe utilizarse el mecanismo de backup de SQLite en lugar de depender únicamente de `cp`.
+
+Por ejemplo:
+
+```bash
+sqlite3 /var/www/faro/database/database.sqlite \
+    ".backup '/var/backups/faro/database-latest.sqlite'"
+```
+
+La estrategia concreta debe ajustarse al patrón de escrituras del CMS.
+
+---
+
+## Backup de medios
+
+Los medios pueden empaquetarse con `tar`:
+
+```bash
+tar -czf \
+    "/var/backups/faro/media-$(date +%Y-%m-%d_%H-%M-%S).tar.gz" \
+    -C /var/www/faro/storage/app \
+    public
+```
+
+Esto respalda originales, conversiones y demás archivos gestionados por Media Library dentro de `storage/app/public`.
+
+También puede ejecutarse periódicamente mediante cron.
+
+---
+
+## Qué respaldar
+
+### Esencial
+
+```text
+database/database.sqlite
+storage/app/public/
+.env
+```
+
+El código fuente debería estar además versionado en Git.
+
+### Regenerable
+
+```text
+dist/
+```
+
+Si se conserva:
+
+```text
+código
++ configuración
++ SQLite
++ medios
+```
+
+el sitio estático puede reconstruirse.
+
+---
+
+# N) Despliegue recomendado
+
+Una instalación típica puede separar conceptualmente el CMS del sitio publicado:
+
+```text
+faro.dagorret.com.ar
+        │
+        │ Laravel + Filament + SQLite
+        │ administración
+        │
+        ▼
+      site:build
+        │
+        ▼
+       dist/
+        │
+        ▼
+dagorret.com.ar
+        │
+        ▼
+      Nginx
+```
+
+Ambos dominios pueden estar en el mismo servidor.
+
+La separación es lógica:
+
+```text
+faro.dagorret.com.ar = aplicación administrativa
+dagorret.com.ar      = sitio estático
+```
+
+El tráfico público normal nunca necesita entrar en Laravel.
+
+---
+
+# O) Instalación nativa en Debian
+
+Docker es útil para desarrollo y para entornos reproducibles, pero **no es un requisito arquitectónico de Faro**.
+
+El CMS puede ejecutarse nativamente en Debian.
+
+La instalación concreta depende de la versión de Debian y de PHP disponible, pero conceptualmente requiere:
+
+- Nginx;
+- PHP 8.4+;
+- PHP-FPM;
+- extensiones PHP requeridas por Laravel;
+- SQLite;
+- Composer;
+- Node.js/npm para construir assets;
+- Git.
+
+Ejemplo orientativo:
+
+```bash
+sudo apt update
+
+sudo apt install \
+    nginx \
+    sqlite3 \
+    git \
+    unzip \
+    curl
+```
+
+PHP y sus extensiones deben instalarse desde los paquetes apropiados para la versión de Debian utilizada.
+
+Entre las extensiones normalmente requeridas por la aplicación se encuentran:
+
+```text
+cli
+fpm
+sqlite3
+mbstring
+xml
+curl
+zip
+intl
+gd
+```
+
+No conviene copiar ciegamente nombres de paquetes entre versiones de Debian: deben verificarse contra la versión de PHP instalada.
+
+---
+
+## 1. Clonar Faro
+
+```bash
+sudo mkdir -p /var/www
+cd /var/www
+
+sudo git clone https://github.com/dagorret/cms.git faro
+sudo chown -R "$USER":www-data /var/www/faro
+
+cd /var/www/faro
+```
+
+---
+
+## 2. Instalar dependencias PHP
+
+```bash
+composer install \
+    --no-dev \
+    --optimize-autoloader
+```
+
+---
+
+## 3. Configurar Laravel
+
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Configurar como mínimo:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://faro.dagorret.com.ar
+```
+
+La configuración SQLite debe apuntar a la base del proyecto.
+
+Crear la base si corresponde:
+
+```bash
+touch database/database.sqlite
+```
+
+Ejecutar migraciones:
+
+```bash
+php artisan migrate --force
+```
+
+---
+
+## 4. Assets
+
+Node.js sólo es necesario en el servidor si se desea compilar allí los assets.
+
+```bash
+npm ci
+npm run build
+```
+
+Una vez generados los assets de producción, Node.js no participa en las peticiones HTTP del CMS ni del sitio estático.
+
+También es posible compilar assets en otro entorno y desplegar el resultado correspondiente.
+
+---
+
+## 5. Permisos
+
+Laravel necesita escribir al menos en:
+
+```text
+storage/
+bootstrap/cache/
+database/
+```
+
+Por ejemplo:
+
+```bash
+sudo chown -R www-data:www-data \
+    storage \
+    bootstrap/cache \
+    database
+
+sudo chmod -R ug+rwX \
+    storage \
+    bootstrap/cache \
+    database
+```
+
+Los permisos exactos deben adaptarse al usuario utilizado para realizar builds y al usuario de PHP-FPM.
+
+No utilizar `chmod 777`.
+
+---
+
+## 6. Optimizar Laravel
+
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+---
+
+# P) Nginx para el CMS
+
+Ejemplo conceptual para:
+
+```text
+faro.dagorret.com.ar
+```
+
+```nginx
+server {
+    listen 80;
+    server_name faro.dagorret.com.ar;
+
+    root /var/www/faro/public;
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
+
+La ruta del socket PHP-FPM debe ajustarse a la instalación real.
+
+En producción debe configurarse HTTPS.
+
+---
+
+# Q) Nginx para el sitio generado
+
+El sitio público no necesita PHP.
+
+Si Faro genera directamente en:
+
+```text
+/var/www/dist
+```
+
+Nginx puede servir ese directorio:
+
+```nginx
+server {
+    listen 80;
+    server_name dagorret.com.ar www.dagorret.com.ar;
+
+    root /var/www/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ $uri/index.html =404;
+    }
+}
+```
+
+Eso es todo lo que necesita el sitio para responder páginas.
+
+No hay `fastcgi_pass`.
+
+No hay Laravel.
+
+No hay conexión a SQLite.
+
+No hay proceso PHP involucrado en una visita pública.
+
+---
+
+# R) Publicación
+
+Una publicación completa puede ejecutarse desde el servidor donde vive Faro:
+
+```bash
+cd /var/www/faro
+php artisan site:build ensayos
+```
+
+Si `dist_path` apunta directamente al directorio servido por Nginx, la salida queda inmediatamente disponible.
+
+Otra posibilidad es compilar en un directorio separado y sincronizar:
+
+```bash
+rsync -a --delete \
+    /var/www/faro/dist/ \
+    /var/www/dist/
+```
+
+Para despliegues de gran tamaño resulta recomendable evolucionar hacia publicación atómica:
+
+```text
+dist-next/
+     │
+     │ build completo
+     ▼
+validación
+     │
+     ▼
+swap / rename
+     │
+     ▼
+dist/
+```
+
+Así Nginx nunca observa un árbol parcialmente generado durante una reconstrucción completa.
+
+---
+
+# S) Shared Hosting
+
+Faro tampoco obliga a que el CMS y el sitio público vivan en el mismo servidor.
+
+`dist/` puede empaquetarse:
+
+```bash
+tar -czf sitio.tar.gz -C dist .
+```
+
+y enviarse mediante:
+
+- SFTP;
+- FTP;
+- rsync;
+- panel de hosting;
+- almacenamiento de objetos;
+- CDN.
+
+Un hosting que sólo sepa entregar HTML puede publicar el resultado.
+
+---
+
+# T) Docker
+
+El proyecto dispone de un entorno Docker para desarrollo y ejecución reproducible.
+
+Docker resulta especialmente útil para:
+
+- desarrollo local;
+- aislar versiones;
+- reproducir PHP/Node;
+- ejecutar tests;
+- evitar contaminar el host.
+
+No debe confundirse esto con un requisito del sitio publicado.
+
+La arquitectura es:
+
+```text
+Docker          opcional
+Laravel         sólo CMS/build
+PHP             sólo CMS/build
+SQLite          sólo CMS/build
+Nginx estático  suficiente para producción pública
+```
+
+---
+
+# U) Por qué creé Faro
+
+## 1. La fricción del flujo editorial tradicional
+
+Antes de Faro estaba Hugo, y con Hugo estaba la fricción.
+
+Publicar significaba entrar por SSH y correr el despliegue, o subir Markdown a GitHub y bajarlo del otro lado, o sincronizar el sitio completo de forma diferencial vía SSH.
+
+Eso dependía de una computadora concreta y de una red que permitiera ese flujo.
+
+La fricción no aparecía solamente ante builds masivos. También existía al publicar un artículo sencillo.
+
+En términos editoriales, quien decidía qué publicar y cuándo terminaba condicionado por su propia infraestructura técnica.
+
+Faro nació para separar esas cosas.
+
+Quería conservar las propiedades de un sitio estático sin renunciar a una interfaz editorial web.
+
+---
+
+## 2. Un CMS delante de un generador estático
+
+La idea inicial no era construir simplemente otro CMS dinámico.
+
+Tampoco quería abandonar las ventajas que había encontrado en generadores como Hugo o Pelican.
+
+La pregunta pasó a ser:
+
+> ¿Por qué no conservar un CMS cómodo para escribir y administrar, pero hacer que su producto final vuelva a ser un conjunto de archivos estáticos?
+
+Ahí apareció Faro.
+
+Laravel y Filament podían resolver muy bien el problema editorial.
+
+SQLite podía mantener la fuente de datos sencilla y portable.
+
+Y una etapa posterior podía transformar todo eso en HTML.
+
+```text
+comodidad editorial
+        +
+base de datos sencilla
+        +
+compilación
+        =
+sitio estático
+```
+
+---
+
+## 3. Los grandes medios como referencia de escala
+
+El objetivo no era copiar visualmente a los grandes medios.
+
+The New York Times, BBC y otras publicaciones de gran escala sirvieron como referencia para formular otra pregunta:
+
+> ¿Cómo se organiza un corpus enorme para que siga siendo navegable, indexable y operativamente razonable?
+
+De allí surgen estructuras familiares:
+
+- una portada jerárquica;
+- paginación;
+- archivos;
+- categorías;
+- feeds;
+- sitemaps;
+- enlaces navegables.
+
+Son estructuras editoriales, pero también estructuras de descubrimiento.
+
+Faro intenta trasladar esa disciplina a un sistema mucho más pequeño y controlable.
+
+---
+
+## 4. El costo debe pagarse una vez
+
+Un CMS dinámico tradicional puede repetir parte del trabajo ante cada request.
+
+Faro intenta pagar ese costo durante la compilación:
+
+```text
+                BUILD
+
+SQLite ──► Blade ──► HTML
+                     │
+                     ▼
+                    disco
+
+
+             REQUEST PÚBLICO
+
+cliente ──► Nginx ──► archivo
+```
+
+La segunda ruta es deliberadamente aburrida.
+
+Y esa es una característica.
+
+---
+
+## 5. El filesystem también es infraestructura
+
+Las pruebas masivas mostraron algo importante.
+
+Cuando el corpus crece suficientemente, la discusión deja de ser solamente:
+
+```text
+¿cuánta RAM consume PHP?
+```
+
+y pasa a ser también:
+
+```text
+¿cuántos archivos estoy creando?
+¿cuántos inodos tengo?
+¿cómo responde el filesystem?
+¿cuánto cuesta el I/O?
+¿cómo despliego cientos de miles de objetos?
+```
+
+A 245.000 posts, la memoria pico medida seguía por debajo de 200 MB.
+
+El filesystem comenzó a ser una preocupación antes que la memoria.
+
+Eso cambia el foco de la siguiente fase de optimización.
+
+No se trata solamente de hacer PHP más rápido.
+
+Se trata de diseñar correctamente el proceso completo:
+
+```text
+SQLite
+   │
+   ▼
+queries
+   │
+   ▼
+render
+   │
+   ▼
+memoria
+   │
+   ▼
+filesystem
+   │
+   ▼
+publicación
+   │
+   ▼
+Nginx
+```
+
+---
+
+## 6. Iluminar lo escondido
+
+La razón de fondo por la que existe Faro no es únicamente el rendimiento.
+
+Un día busqué quién había sido el gobernador de Nueva York en 1904 y qué había hecho durante su gestión.
+
+El dato existía.
+
+Estaba en archivos y textos.
+
+Pero no aparecía fácilmente en la superficie de Internet.
+
+Hay una cantidad enorme de información legítima que no está deliberadamente oculta: simplemente está demasiado profunda, mal estructurada o insuficientemente conectada para ser descubierta.
+
+Faro nace también de esa preocupación.
+
+Publicar no consiste solamente en guardar documentos.
+
+Consiste en darles:
+
+- una URL;
+- una estructura;
+- enlaces;
+- contexto;
+- categorías;
+- archivo;
+- sitemap;
+- posibilidad de ser rastreados.
+
+Por eso el nombre.
+
+**Faro no sólo busca compilar rápido. Busca iluminar lo que estaba escondido.**
+
+---
+
+# V) Estado del proyecto
+
+Faro ya dispone de los componentes fundamentales de un CMS y generador estático operativo:
+
+- administración mediante Filament;
+- SQLite;
+- múltiples sitios;
+- posts y páginas;
+- categorías;
+- etiquetas;
+- menús;
+- EditorJS;
+- Markdown;
+- HTML enriquecido;
+- MathJax;
+- Media Library;
+- previews y conversiones de imágenes;
+- biblioteca de medios;
+- builds completos;
+- builds incrementales;
+- builds individuales;
+- portada;
+- paginación;
+- archivo;
+- categorías estáticas;
+- feeds;
+- sitemap;
+- publicación a `dist/`.
+
+La siguiente etapa principal no consiste en agregar más funcionalidades editoriales.
+
+Consiste en **perfilar y afilar el compilador**:
+
+- localizar retenciones innecesarias de memoria;
+- medir cada etapa;
+- reducir colecciones residentes;
+- mejorar streaming/chunking;
+- estudiar filesystem e inodos;
+- optimizar builds de escala extrema;
+- preparar publicación atómica.
+
+---
+
+# W) Repositorio
+
+Código fuente:
+
+https://github.com/dagorret/cms
+
+---
+
+# X) Licencia
 
 **Creative Commons Atribución-NoComercial 4.0 Internacional (CC BY-NC 4.0)**
 
-CMS Faro se distribuye bajo esta licencia. Cualquier persona es libre de:
+CMS Faro se distribuye bajo esta licencia.
+
+Cualquier persona es libre de:
 
 - **Compartir** — copiar y redistribuir el material en cualquier medio o formato.
 - **Adaptar** — remezclar, transformar y construir a partir del material.
@@ -280,4 +1192,12 @@ Bajo los siguientes términos:
 - **Atribución** — debe darse crédito de manera adecuada, proveer un enlace a la licencia e indicar si se realizaron cambios.
 - **No Comercial** — el material no puede utilizarse con fines comerciales sin autorización expresa del autor.
 
-Texto legal completo: https://creativecommons.org/licenses/by-nc/4.0/deed.es
+Texto legal:
+
+https://creativecommons.org/licenses/by-nc/4.0/deed.es
+
+---
+
+## CMS Faro
+
+**Un CMS para escribir. Un compilador para publicar. Archivos estáticos para servir.**
