@@ -1201,3 +1201,477 @@ https://creativecommons.org/licenses/by-nc/4.0/deed.es
 ## CMS Faro
 
 **Un CMS para escribir. Un compilador para publicar. Archivos estáticos para servir.**
+
+
+---
+
+# Y) Misión cumplida
+
+Faro nació de una necesidad concreta: recuperar la comodidad de publicar desde un CMS sin renunciar a las propiedades de un sitio completamente estático.
+
+Ese objetivo ya está cumplido.
+
+El contenido se escribe y administra desde una interfaz web, se almacena en SQLite y finalmente se transforma en archivos estáticos que Nginx puede servir sin Laravel, PHP ni una base de datos en el camino público.
+
+Faro ya se utiliza para publicar este sitio:
+
+- [Soberanía digital 00.1](https://dagorret.com.ar/soberania-digital-00-1/)
+- [La odisea del MathML estático en Hugo: operadores elásticos y soberanía local](https://dagorret.com.ar/la-odisea-del-mathml-estatico-en-hugo-operadores-elasticos-y-soberania-local/)
+
+Esos documentos recorren el pipeline completo:
+
+```text
+autor
+  │
+  ▼
+CMS Faro
+  │
+  ├── Filament
+  ├── EditorJS / Markdown
+  ├── MathJax
+  ├── Media Library
+  └── SQLite
+  │
+  ▼
+compilador
+  │
+  ▼
+dist/
+  │
+  ├── HTML
+  ├── CSS
+  ├── JavaScript
+  ├── XML / JSON
+  └── medios
+  │
+  ▼
+Nginx
+  │
+  ▼
+Internet
+```
+
+# Z) Roadmap
+
+## Faro 2.5 — Pulido funcional
+
+La rama 2.x ya cumple el objetivo arquitectónico principal de Faro.
+
+La versión **2.5** estará dedicada principalmente a completar y pulir funcionalidades existentes, corregir problemas encontrados durante el uso real y mejorar la experiencia diaria del CMS.
+
+No pretende cambiar la arquitectura del generador.
+
+Entre los trabajos previstos se encuentran:
+
+- correcciones funcionales surgidas del uso cotidiano;
+- mejoras de la interfaz administrativa;
+- ajustes de EditorJS, Markdown y HTML;
+- mejoras en el manejo de medios;
+- pequeños ajustes de categorías, menús y navegación;
+- correcciones del pipeline matemático MathJax/LaTeX;
+- mejoras en mensajes, validaciones y diagnósticos;
+- endurecimiento de casos límite del build incremental;
+- mejoras menores en la operación y despliegue.
+
+La prioridad de 2.5 será:
+
+> **hacer más sólido y cómodo lo que Faro ya sabe hacer.**
+
+---
+
+# Faro 3 — El compilador afilado
+
+Faro 3 tendrá un objetivo diferente.
+
+No será principalmente una versión de nuevas funciones editoriales.
+
+Será una revisión profunda del proceso que transforma SQLite en cientos de miles —y potencialmente millones— de archivos estáticos.
+
+Las pruebas realizadas hasta ahora dieron una pista importante.
+
+A los 245.000 posts:
+
+```
+Tiempo:          885,44 s                 14 min 45 sMemoria actual:  187,51 MBMemoria pico:    196,5 MB
+```
+
+La RAM todavía no era el límite inmediato.
+
+Antes comenzaron a importar el filesystem, los inodos y el I/O.
+
+Faro 3 parte de esa observación.
+
+La pregunta ya no será solamente:
+
+> ¿Cómo hacemos más rápido el código PHP?
+
+La pregunta será:
+
+> **¿Cuál es la forma más eficiente de transformar una base SQLite enorme en un árbol estático enorme?**
+
+## 1. Medir antes de optimizar
+
+La primera tarea de Faro 3 será instrumentar completamente el compilador.
+
+Cada etapa importante deberá poder informar, como mínimo:
+
+```
+tiempomemoria actualmemoria picocantidad de registroscantidad de archivos escritosbytes escritos
+```
+
+El build deberá poder descomponerse conceptualmente en:
+
+```
+inicio  │  ├── selección de posts  ├── carga desde SQLite  ├── render de posts  ├── escritura de posts  ├── páginas  ├── portada  ├── categorías  ├── archivos  ├── feeds  ├── sitemap  ├── schemas / metadata  ├── medios  └── finalización
+```
+
+Antes de cambiar algoritmos habrá que saber exactamente dónde se consume:
+
+- CPU;
+- memoria;
+- tiempo de consultas;
+- tiempo de Blade/render;
+- tiempo de serialización;
+- tiempo de escritura;
+- tiempo de filesystem.
+
+Faro 3 no optimizará por intuición.
+
+**Primero perfilar. Después cortar.**
+
+---
+
+## 2. Encontrar las retenciones de memoria
+
+Uno de los objetivos principales será localizar funciones que mantienen estructuras vivas durante más tiempo del necesario.
+
+Se revisarán especialmente:
+
+- colecciones Eloquent grandes;
+- modelos hidratados innecesariamente;
+- relaciones eager-loaded;
+- cuerpos completos de posts;
+- excerpts;
+- estructuras auxiliares;
+- índices mantenidos en PHP;
+- arrays acumulativos;
+- closures que retengan referencias;
+- resultados globales reutilizados entre etapas.
+
+El objetivo será pasar, siempre que sea posible, de:
+
+```
+cargar corpus     │     ▼mantener corpus en RAM     │     ▼generar múltiples estructuras
+```
+
+a:
+
+```
+consultar lo necesario     │     ▼procesar     │     ▼escribir     │     ▼liberar
+```
+
+La memoria debería depender principalmente del tamaño del lote de trabajo y no del tamaño total del sitio.
+
+---
+
+## 3. Consultas específicas
+
+No todas las salidas necesitan un `Post` completo.
+
+Por ejemplo:
+
+```
+sitemap→ slug + updated_atarchivo→ id + slug + title + published_atfeed→ últimos N postscategoría→ metadata mínima + posts correspondientespost individual→ contenido completo
+```
+
+Faro 3 revisará cada etapa para evitar cargar columnas, relaciones y cuerpos que no utiliza.
+
+La regla será sencilla:
+
+> **pedirle a SQLite solamente los datos que la salida necesita.**
+
+---
+
+## 4. Chunking, cursors y streaming
+
+Se evaluará sistemáticamente el uso de:
+
+- `chunkById()`;
+- `lazyById()`;
+- cursors;
+- generators;
+- streaming;
+- escritura incremental.
+
+El objetivo es que procesar:
+
+```
+10.000 posts100.000 posts1.000.000 posts
+```
+
+no implique mantener esas cantidades de objetos simultáneamente en memoria.
+
+---
+
+## 5. Liberación entre etapas
+
+Una compilación completa genera varias familias de documentos.
+
+No existe razón para que las estructuras utilizadas para generar una familia permanezcan necesariamente vivas durante la siguiente.
+
+Faro 3 buscará que cada etapa tenga un ciclo claro:
+
+```
+crear contexto     │     ▼generar salida     │     ▼persistir     │     ▼liberar contexto
+```
+
+Las mediciones de memoria entre etapas permitirán comprobar que esa liberación ocurre realmente.
+
+---
+
+## 6. SQLite
+
+SQLite también será perfilado.
+
+Se estudiarán:
+
+- índices utilizados durante el build;
+- planes de consulta;
+- ordenamiento;
+- paginación;
+- búsquedas por estado;
+- categorías;
+- fechas;
+- selección incremental;
+- columnas realmente utilizadas;
+- costo de hidratación Eloquent frente a consultas más directas cuando corresponda.
+
+La intención no es abandonar Eloquent indiscriminadamente.
+
+La intención es utilizar el nivel de abstracción adecuado para cada parte del compilador.
+
+---
+
+## 7. El filesystem como parte del compilador
+
+Las pruebas masivas mostraron que generar sitios gigantes no es solamente un problema de aplicación.
+
+También es un problema de filesystem.
+
+Faro 3 medirá y documentará:
+
+- archivos generados;
+- directorios creados;
+- inodos consumidos;
+- bytes lógicos;
+- espacio físico utilizado;
+- operaciones de escritura;
+- costo de creación de archivos pequeños;
+- distribución de archivos entre directorios;
+- comportamiento del filesystem utilizado.
+
+Se evaluará el impacto de diferentes estrategias de layout y publicación.
+
+En sitios pequeños esto es irrelevante.
+
+En sitios con millones de objetos deja de serlo.
+
+---
+
+## 8. Evitar escrituras innecesarias
+
+Un build incremental no debería escribir un archivo cuyo contenido final es exactamente igual al que ya existe, salvo que exista una razón operativa para hacerlo.
+
+Se estudiarán estrategias como:
+
+```
+contenido nuevo    │    ▼comparación / fingerprint    │    ├── igual ─────► no escribir    │    └── distinto ──► reemplazar
+```
+
+Esto puede reducir:
+
+- I/O;
+- modificaciones de mtime;
+- invalidaciones posteriores;
+- trabajo de sincronización;
+- escrituras sobre almacenamiento.
+
+---
+
+## 9. Escrituras atómicas
+
+Cuando un archivo deba reemplazarse, Faro 3 deberá estudiar una estrategia segura:
+
+```
+archivo.tmp    │    ▼escritura completa    │    ▼fsync / cierre    │    ▼rename    │    ▼archivo final
+```
+
+El lector nunca debería recibir medio HTML porque coincidió con el instante exacto de una publicación.
+
+---
+
+## 10. Builds completos atómicos
+
+Para reconstrucciones completas se estudiará formalizar:
+
+```
+dist-current/dist-next/
+```
+
+El nuevo sitio se construye fuera del árbol público.
+
+Sólo cuando termina y pasa sus validaciones:
+
+```
+dist-next    │    ▼validación    │    ▼swap    │    ▼producción
+```
+
+Esto permitirá que un build de gran escala no exponga estados intermedios a Nginx.
+
+---
+
+## 11. Separar generación y despliegue
+
+Faro 3 distinguirá más claramente dos operaciones:
+
+```
+BUILDSQLite → árbol estáticoDEPLOYárbol estático → producción
+```
+
+Hoy ambas pueden ocurrir prácticamente en el mismo lugar.
+
+La separación permitirá en el futuro construir en una máquina y publicar en otra mediante:
+
+- `rsync`;
+- SSH;
+- object storage;
+- CDN;
+- artefactos comprimidos;
+- otros mecanismos de despliegue.
+
+El compilador no debería necesitar saber cómo será servido finalmente el resultado.
+
+---
+
+## 12. Medios a gran escala
+
+Los medios merecen un pipeline propio.
+
+Se revisará:
+
+- cuándo copiar;
+- cuándo reutilizar;
+- cuándo convertir;
+- cómo detectar cambios;
+- cómo evitar reprocesamientos;
+- cómo manejar originales y previews;
+- cómo calcular qué medios necesita realmente una publicación;
+- costo de optimización de imágenes;
+- impacto del almacenamiento de miles o millones de archivos.
+
+El contenido HTML y el contenido binario tienen características diferentes y no necesariamente deben compartir la misma estrategia.
+
+---
+
+## 13. Paralelismo: sólo si las mediciones lo justifican
+
+Faro 3 no asumirá que más procesos significan automáticamente mayor velocidad.
+
+Antes de introducir paralelismo se determinará cuál es el cuello de botella real.
+
+Si el límite es CPU, dividir trabajo puede ayudar.
+
+Si el límite es el disco, multiplicar escritores puede empeorar el rendimiento.
+
+Por eso el orden será:
+
+```
+medir  ↓identificar cuello  ↓optimizar algoritmo  ↓volver a medir  ↓recién entonces evaluar paralelismo
+```
+
+---
+
+## 14. Benchmarks reproducibles
+
+Faro 3 deberá disponer de benchmarks repetibles para distintos tamaños.
+
+Como mínimo:
+
+```
+10K30K100K300K500K1M2M
+```
+
+Cada prueba debería registrar:
+
+```
+hardwarefilesystemPHPSQLitecantidad de poststamaño medio del contenidotiempoposts/sRAM picoarchivos generadosinodosbytes escritostamaño lógico de disttamaño físico de dist
+```
+
+Los resultados publicados deberán distinguir siempre:
+
+```
+MEDIDO
+```
+
+de:
+
+```
+PROYECTADO
+```
+
+---
+
+## 15. Objetivo de escala
+
+Faro 3 no promete que dos millones de posts se compilarán en un tiempo determinado antes de medirlo.
+
+Sí establece una meta arquitectónica:
+
+> **El tamaño total del corpus no debería traducirse linealmente en memoria residente.**
+
+Con procesamiento por lotes, consultas específicas y un filesystem correctamente dimensionado, la intención es poder trabajar con corpus del orden de:
+
+```
+1.000.0002.000.000
+```
+
+de documentos utilizando cantidades moderadas de RAM.
+
+Los ensayos actuales sugieren que es posible.
+
+Faro 3 deberá demostrarlo.
+
+---
+
+# Después de Faro 3
+
+Faro empezó resolviendo un problema editorial.
+
+Luego se convirtió en un generador estático.
+
+La siguiente etapa consiste en convertir ese generador en un compilador medible y predecible.
+
+```
+Faro 1   
+│   
+└── ideaFaro 2   
+│   
+└── CMS + generador estático funcionalFaro 2.5   
+│   
+└── pulido funcionalFaro 3   
+│   └── optimización integral del compilador       
+    │
+    ├── CPU       
+    ├── memoria       
+    ├── SQLite       
+    ├── filesystem       
+    ├── I/O       
+    ├── atomicidad       
+    └── escala
+```
+
+La misión original ya está cumplida.
+
+Ahora toca afilar la máquina.
+
+
