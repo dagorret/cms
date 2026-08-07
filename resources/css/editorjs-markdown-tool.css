@@ -17,6 +17,7 @@
     line-height: 1.6;
     tab-size: 4;
     white-space: pre-wrap;
+    overflow-y: hidden;
 }
 
 .faro-markdown-tool__input:focus {
