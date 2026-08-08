@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\EditorJs\MarkdownBlockRenderer;
+use App\EditorJs\ImageBlockRenderer;
 use App\Models\Category;
 use App\Models\Menu;
 use App\Models\MenuItem;
@@ -38,7 +39,8 @@ class AppServiceProvider extends ServiceProvider
             Css::make('editorjs-markdown-tool', resource_path('css/editorjs-markdown-tool.css')),
         ], package: 'faro-cms');
 
-        FilamentEditorjs::addRenderer(new MarkdownBlockRenderer);
+	FilamentEditorjs::addRenderer(new MarkdownBlockRenderer);
+	FilamentEditorjs::addRenderer(new ImageBlockRenderer);
 
         Post::observe(PostObserver::class);
         Category::observe(CategoryObserver::class);
