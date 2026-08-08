@@ -215,7 +215,11 @@ class SiteBuildCommand extends Command
         $this->newLine();
         $this->info('📊 --- REPORTE DE RENDIMIENTO ULTRA (NASA MODE) ---');
         $this->info("⏱️  Tiempo total de ejecución: {$executionTime} segundos");
-        $this->info("🧠 Pico máximo de memoria RAM: {$peakMemory} MB / 512 MB");
+
+        $peakMemory = round(memory_get_peak_usage(true) / 1024 / 1024, 1);
+        $memoryLimit = ini_get('memory_limit');
+
+        $this->info("🧠 Pico máximo de memoria RAM: {$peakMemory} MB | PHP memory_limit: {$memoryLimit}");
         $this->info('-------------------------------------------------------');
         $this->resourceSnapshot('fin', $processedCount);
 
