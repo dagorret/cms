@@ -1,0 +1,8 @@
+[root@vps-5974620-x /var/www/a.dagorret.com.ar] # cat tk-c.txt
+sudo -u www-data php artisan tinker
+
+
+$user = App\Models\User::find(1);
+$user->password = Illuminate\Support\Facades\Hash::make('TU_NUEVA_CLAVE');
+$user->save();
+[root@vps-5974620-x /var/www/a.dagorret.com.ar] #
