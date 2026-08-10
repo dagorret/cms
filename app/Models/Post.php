@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaReferenceResolver;
 use App\Support\PostBodyMathDetector;
 use App\Support\PostBodyRenderer;
 use Athphane\FilamentEditorjs\Traits\ModelHasEditorJsComponent;
@@ -156,14 +157,17 @@ class Post extends Model implements HasMedia
         $decoded = json_decode($value, true);
 
         return json_last_error() === JSON_ERROR_NONE && is_array($decoded)
-            ? $decoded
+            ? app(MediaReferenceResolver::class)->normalizeEditorJsPayload($decoded)
             : $value;
     }
 
     public function setBodyAttribute(mixed $value): void
     {
         $this->attributes['body'] = is_array($value)
-            ? json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ? json_encode(
+                app(MediaReferenceResolver::class)->normalizeEditorJsPayload($value),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            )
             : $value;
     }
 

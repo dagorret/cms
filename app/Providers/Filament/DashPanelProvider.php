@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Auth\EditProfile;
 use App\Http\Controllers\PostPreviewController;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -29,6 +30,7 @@ class DashPanelProvider extends PanelProvider
             ->id('dash')
             ->path('dash')
             ->login()
+            ->profile(EditProfile::class, isSimple: false)
             // Sin asset de logo propio todavía: se usa brandName textual.
             // Cuando exista un logo, agregar ->brandLogo() / ->darkModeBrandLogo() aquí.
             ->brandName('CMS Faro')

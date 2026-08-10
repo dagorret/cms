@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\EditorJs;
 
+use App\Support\MediaReferenceResolver;
 use Athphane\FilamentEditorjs\Renderers\BlockRenderer;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -18,19 +19,14 @@ final class ImageBlockRenderer extends BlockRenderer
             $media = Media::find($mediaId);
 
             if ($media) {
-                $url = $media->hasGeneratedConversion('preview')
-                    ? $media->getUrl('preview')
-                    : $media->getUrl();
+                $conversion = $media->hasGeneratedConversion('preview') ? 'preview' : '';
+                data_set($data, 'file.url', app(MediaReferenceResolver::class)->staticUrl($media, $conversion));
+            }
+        } elseif (is_string($url = data_get($data, 'file.url'))) {
+            $normalized = app(MediaReferenceResolver::class)->normalizeUrl($url);
 
-                // Para el HTML estático nos interesa solamente el path.
-                // http://127.0.0.1:8000/storage/15/...
-                // pasa a:
-                // /storage/15/...
-                $path = parse_url($url, PHP_URL_PATH);
-
-                if (is_string($path) && $path !== '') {
-                    data_set($data, 'file.url', $path);
-                }
+            if ($normalized !== null) {
+                data_set($data, 'file.url', $normalized['url']);
             }
         }
 

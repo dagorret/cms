@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -22,6 +23,32 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return true;
+    }
+
+    public function canBeDeletedBy(?self $actor): bool
+    {
+        return $actor !== null
+            && ! $this->is($actor)
+            && static::query()
+                ->where($this->getKeyName(), '!=', $this->getKey())
+                ->exists();
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (self $user): void {
+            if (auth()->id() === $user->getAuthIdentifier()) {
+                throw ValidationException::withMessages([
+                    'user' => 'No podés eliminar tu propio usuario.',
+                ]);
+            }
+
+            if (! static::query()->where($user->getKeyName(), '!=', $user->getKey())->exists()) {
+                throw ValidationException::withMessages([
+                    'user' => 'No se puede eliminar el último usuario de Faro.',
+                ]);
+            }
+        });
     }
 
     /**

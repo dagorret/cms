@@ -17,7 +17,10 @@ use FilesystemIterator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Throwable;
 
 class SiteBuildCommand extends Command
@@ -956,37 +959,123 @@ class SiteBuildCommand extends Command
 
         $this->cleanMediaDestination($destinationPath);
 
-        if (! File::isDirectory($sourcePath)) {
-            $this->warn("   ⚠️  No existe la carpeta de medios origen: {$sourcePath}");
+        if ($typeStorage !== 'copy') {
+            if ($typeStorage !== 'symlink') {
+                $this->warn("   ⚠️  type_storage [{$typeStorage}] no reconocido. Se usa copy.");
+                $typeStorage = 'copy';
+            }
+        }
+
+        File::ensureDirectoryExists($destinationPath, 0755, true);
+
+        $publishedSources = 0;
+
+        if (File::isDirectory($sourcePath)) {
+            $this->publishMediaDirectoryContents($sourcePath, $destinationPath, $typeStorage);
+            $publishedSources++;
+        } else {
+            $this->warn("   ⚠️  No existe la carpeta de medios generales: {$sourcePath}");
+        }
+
+        foreach (Media::query()->orderBy('id')->lazyById(200) as $media) {
+            $mediaSource = dirname($media->getPath());
+
+            if (! File::isDirectory($mediaSource) || is_link($mediaSource)) {
+                throw new RuntimeException("No se pudo resolver el directorio seguro del medio Spatie [{$media->getKey()}].");
+            }
+
+            $mediaDestination = $this->joinPath($destinationPath, (string) $media->getKey());
+            $this->publishMediaDirectory($mediaSource, $mediaDestination, $typeStorage);
+            $publishedSources++;
+        }
+
+        if ($publishedSources === 0) {
+            $this->warn('   ⚠️  No hay medios generales ni medios Spatie para publicar.');
 
             return;
         }
 
-        $destinationParent = dirname($destinationPath);
+        $verb = $typeStorage === 'symlink' ? 'enlazados simbolicamente' : 'copiados';
+        $this->info("   ✔️ Medios {$verb} en {$destinationPath}");
 
-        if (! File::exists($destinationParent)) {
-            File::makeDirectory($destinationParent, 0755, true);
+        if ($optimize && $typeStorage === 'copy') {
+            $this->optimizeCopiedMediaAssets($destinationPath);
         }
+    }
+
+    protected function publishMediaDirectoryContents(string $source, string $destination, string $typeStorage): void
+    {
+        $this->assertSafeMediaSource($source);
+
+        if ($typeStorage === 'copy') {
+            if (! File::copyDirectory($source, $destination)) {
+                throw new RuntimeException("No se pudo copiar la carpeta de medios desde {$source} hacia {$destination}.");
+            }
+
+            return;
+        }
+
+        foreach (new FilesystemIterator($source, FilesystemIterator::SKIP_DOTS) as $item) {
+            $this->publishMediaDirectory($item->getPathname(), $this->joinPath($destination, $item->getFilename()), $typeStorage);
+        }
+    }
+
+    protected function publishMediaDirectory(string $source, string $destination, string $typeStorage): void
+    {
+        $this->assertSafeMediaSource($source);
+
+        if (File::exists($destination) || is_link($destination)) {
+            if ($typeStorage === 'copy' && File::isDirectory($source) && File::isDirectory($destination) && ! is_link($destination)) {
+                if (! File::copyDirectory($source, $destination)) {
+                    throw new RuntimeException("No se pudo combinar el directorio de medios desde {$source} hacia {$destination}.");
+                }
+
+                return;
+            }
+
+            throw new RuntimeException("El destino de medios [{$destination}] colisiona con otra fuente.");
+        }
+
+        File::ensureDirectoryExists(dirname($destination), 0755, true);
 
         if ($typeStorage === 'symlink') {
-            File::link($sourcePath, $destinationPath);
-            $this->info("   ✔️ Medios enlazados simbolicamente en {$destinationPath}");
+            File::link($source, $destination);
 
             return;
         }
 
-        if ($typeStorage !== 'copy') {
-            $this->warn("   ⚠️  type_storage [{$typeStorage}] no reconocido. Se usa copy.");
+        if (File::isDirectory($source)) {
+            if (! File::copyDirectory($source, $destination)) {
+                throw new RuntimeException("No se pudo copiar el directorio de medios desde {$source} hacia {$destination}.");
+            }
+
+            return;
         }
 
-        if (! File::copyDirectory($sourcePath, $destinationPath)) {
-            throw new RuntimeException("No se pudo copiar la carpeta de medios hacia {$destinationPath}");
+        if (! File::copy($source, $destination)) {
+            throw new RuntimeException("No se pudo copiar el archivo de medios desde {$source} hacia {$destination}.");
+        }
+    }
+
+    protected function assertSafeMediaSource(string $source): void
+    {
+        if (is_link($source)) {
+            throw new RuntimeException("La fuente de medios [{$source}] no puede ser un enlace simbolico.");
         }
 
-        $this->info("   ✔️ Medios copiados en {$destinationPath}");
+        if (! File::isDirectory($source)) {
+            return;
+        }
 
-        if ($optimize) {
-            $this->optimizeCopiedMediaAssets($destinationPath);
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST,
+        );
+
+        foreach ($iterator as $item) {
+            if ($item->isLink()) {
+                throw new RuntimeException("La fuente de medios contiene un enlace simbolico no permitido: {$item->getPathname()}");
+            }
         }
     }
 
@@ -1030,9 +1119,9 @@ class SiteBuildCommand extends Command
             return;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($destinationPath, FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::LEAVES_ONLY,
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($destinationPath, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY,
         );
 
         foreach ($iterator as $file) {

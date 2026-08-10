@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\Posts\Schemas;
 
+use App\Filament\Forms\Components\FaroEditorjsTextField;
 use App\Models\Category;
 use App\Models\Post;
-use Athphane\FilamentEditorjs\Forms\Components\EditorjsTextField;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Hidden;
@@ -26,7 +26,7 @@ class PostForm
         $editorType = config('static_cms.default_editor');
 
         $editorComponent = match ($editorType) {
-            'editorjs' => EditorjsTextField::make('body')
+            'editorjs' => FaroEditorjsTextField::make('body')
                 ->placeholder('Empezá a escribir tu obra maestra en bloques...')
                 ->extraAttributes([
                     'data-faro-editorjs' => 'body',
