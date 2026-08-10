@@ -266,6 +266,59 @@ dist/
 
 La estructura exacta depende de la configuración y del sitio compilado.
 
+### Archivos estáticos globales
+
+Faro permite publicar archivos estáticos que deben quedar en la raíz —o en una ruta fija— de todos los sitios generados. El directorio fuente es:
+
+```text
+resources/static/
+```
+
+Todo archivo o subdirectorio contenido allí se copia, preservando su estructura relativa, al `dist_path` del sitio que se está compilando. Por ejemplo:
+
+```text
+resources/static/favicon.ico
+resources/static/robots.txt
+resources/static/images/default-logo.png
+```
+
+para un sitio cuyo `dist_path` sea `/var/www/dist/sitio1` produce:
+
+```text
+/var/www/dist/sitio1/favicon.ico
+/var/www/dist/sitio1/robots.txt
+/var/www/dist/sitio1/images/default-logo.png
+```
+
+La misma fuente se publica de forma independiente para cada sitio, siempre dentro de su propio `dist_path`. Faro **no copia el directorio `public/` de Laravel** al sitio generado: `public/` pertenece a la aplicación administrativa, mientras que `resources/static/` declara explícitamente los archivos estáticos globales que forman parte del producto publicado.
+
+El orden de publicación de recursos globales es determinista:
+
+```text
+estructuras globales
+→ medios
+→ resources/static
+→ Vite
+```
+
+Por lo tanto, un archivo de `resources/static/` puede sobrescribir una colisión producida por una etapa anterior, mientras que los assets publicados por Vite prevalecen dentro de su destino `build/`. Esta publicación se integra tanto en builds completos y forzados como en la finalización de builds individuales (`--post`) y en `--scope=logo`.
+
+#### Favicon
+
+Para publicar un favicon común basta con agregar:
+
+```text
+resources/static/favicon.ico
+```
+
+Después del build estará disponible como:
+
+```text
+<dist_path>/favicon.ico
+```
+
+y, si el `dist_path` es la raíz servida por Nginx, mediante `/favicon.ico`. Los navegadores suelen consultar esa ubicación convencional incluso sin una declaración explícita, aunque las plantillas pueden declarar `<link rel="icon" href="/favicon.ico">` para hacer la relación explícita y permitir otros formatos o ubicaciones.
+
 ---
 
 ## H) Compilación completa, incremental e individual

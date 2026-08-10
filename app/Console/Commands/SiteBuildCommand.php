@@ -109,6 +109,7 @@ class SiteBuildCommand extends Command
         if ($section === 'logo') {
             try {
                 $this->processMediaAssets($targetFolder);
+                $this->publishStaticFiles($targetFolder);
             } catch (Throwable $exception) {
                 report($exception);
                 $this->error('❌ Error al procesar assets: '.$exception->getMessage());
@@ -198,8 +199,9 @@ class SiteBuildCommand extends Command
         // ===================================================================
         try {
             $this->regenerateGlobalStructures($site, $targetFolder);
-            $this->processMediaAssets($targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
+            $this->processMediaAssets($targetFolder);
+            $this->publishStaticFiles($targetFolder);
             $this->publishViteAssets($targetFolder);
             $this->writeStaticOutputSignature($targetFolder);
         } catch (Throwable $exception) {
@@ -302,8 +304,9 @@ class SiteBuildCommand extends Command
     {
         try {
             $this->regenerateGlobalStructures($site, $targetFolder);
-            $this->processMediaAssets($targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
+            $this->processMediaAssets($targetFolder);
+            $this->publishStaticFiles($targetFolder);
             $this->publishViteAssets($targetFolder);
             $this->writeStaticOutputSignature($targetFolder);
         } catch (Throwable $exception) {
@@ -828,6 +831,41 @@ class SiteBuildCommand extends Command
         }
 
         $this->comment("   ✔️ Build de Vite publicado atomicamente en {$destination}");
+    }
+
+    /**
+     * Static files overwrite earlier global structures or media on collision.
+     * Vite is published afterwards and therefore wins inside its build destination.
+     */
+    protected function publishStaticFiles(string $targetFolder): void
+    {
+        $sourcePath = $this->staticFilesSourcePath();
+
+        if (! File::isDirectory($sourcePath)) {
+            $this->comment("   ℹ️  No existe la carpeta de estaticos globales: {$sourcePath}. Se omite su publicacion.");
+
+            return;
+        }
+
+        try {
+            if (! File::copyDirectory($sourcePath, $targetFolder)) {
+                throw new RuntimeException("No se pudieron copiar los estaticos globales desde {$sourcePath} hacia {$targetFolder}.");
+            }
+        } catch (Throwable $exception) {
+            throw $exception instanceof RuntimeException
+                ? $exception
+                : new RuntimeException(
+                    "No se pudieron publicar los estaticos globales en {$targetFolder}: {$exception->getMessage()}",
+                    previous: $exception,
+                );
+        }
+
+        $this->info("   ✔️ Estaticos globales publicados en {$targetFolder}");
+    }
+
+    protected function staticFilesSourcePath(): string
+    {
+        return resource_path('static');
     }
 
     protected function cleanDistForForcedBuild(string $targetFolder): void
