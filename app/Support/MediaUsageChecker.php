@@ -34,14 +34,42 @@ final class MediaUsageChecker
     /**
      * @return array<int>
      */
-    private static function referencedMediaIds(Post $post): array
+    public static function referencedMediaIds(Post $post): array
     {
-        return collect(data_get($post->body, 'blocks', []))
-            ->filter(fn (array $block): bool => data_get($block, 'type') === 'image')
-            ->map(fn (array $block): mixed => data_get($block, 'data.file.media_id'))
-            ->filter()
-            ->map(fn (mixed $id): int => (int) $id)
-            ->values()
-            ->all();
+        $body = $post->getRawOriginal('body');
+
+        if (is_string($body)) {
+            $body = json_decode($body, true);
+        }
+
+        if (! is_array($body)) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach (data_get($body, 'blocks', []) as $block) {
+            if (! is_array($block) || data_get($block, 'type') !== 'image') {
+                continue;
+            }
+
+            $mediaId = filter_var(data_get($block, 'data.file.media_id'), FILTER_VALIDATE_INT, [
+                'options' => ['min_range' => 1],
+            ]);
+
+            if ($mediaId === false) {
+                $url = data_get($block, 'data.file.url');
+                $normalized = is_string($url)
+                    ? app(MediaReferenceResolver::class)->normalizeUrl($url)
+                    : null;
+                $mediaId = $normalized['media_id'] ?? false;
+            }
+
+            if ($mediaId !== false) {
+                $ids[(int) $mediaId] = true;
+            }
+        }
+
+        return array_keys($ids);
     }
 }

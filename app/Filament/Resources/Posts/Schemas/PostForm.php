@@ -142,13 +142,24 @@ JS,
                     ->helperText('Activa MathJax solo para este articulo.')
                     ->default(false),
 
-                DateTimePicker::make('published_at')
-                    ->default(now())
-                    ->label('Fecha de Publicación'),
+                self::publicationDatePicker(),
 
                 DateTimePicker::make('static_built_at')
                     ->disabled(),
             ]);
+    }
+
+    public static function publicationDatePicker(): DateTimePicker
+    {
+        return DateTimePicker::make('published_at')
+            ->default(now())
+            ->label('Fecha de Publicación')
+            ->native(false)
+            ->displayFormat('d/m/Y H:i')
+            ->seconds(false)
+            ->timezone((string) config('app.timezone'))
+            ->required(fn (Get $get): bool => $get('status') === Post::STATUS_SCHEDULED)
+            ->helperText('Zona horaria: '.config('app.timezone'));
     }
 
     protected static function resolveMediaDirectory(): string

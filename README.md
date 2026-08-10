@@ -360,6 +360,38 @@ El objetivo es combinar dos propiedades:
 - builds cotidianos pequeños;
 - capacidad de reconstruir el sitio completo cuando sea necesario.
 
+### Publicaciones programadas
+
+Un contenido con estado `scheduled` se vuelve elegible cuando `published_at` es menor o igual a la hora actual de Laravel. Faro interpreta el formulario, el valor persistido, `now()` y el Scheduler en `APP_TIMEZONE` (`UTC` por defecto). El selector muestra explícitamente `dd/mm/aaaa HH:mm`, sin segundos y en formato de 24 horas.
+
+Para trabajar editorialmente con la hora de Córdoba, por ejemplo:
+
+```dotenv
+APP_TIMEZONE=America/Argentina/Cordoba
+```
+
+El Scheduler ejecuta cada minuto:
+
+```bash
+php artisan posts:publish-scheduled
+```
+
+Cada publicación vencida pasa temporalmente a `published` y ejecuta el build incremental del post, que también regenera portada, listados, categorías, feed y sitemap. Si el build falla, el estado vuelve a `scheduled`, por lo que el siguiente ciclo puede reintentarlo. Varias ejecuciones no vuelven a procesar posts ya publicados y la tarea usa `withoutOverlapping()`.
+
+Para verificar el registro de la tarea:
+
+```bash
+php artisan schedule:list
+```
+
+En producción, el sistema operativo debe invocar Laravel Scheduler cada minuto. Por ejemplo:
+
+```cron
+* * * * * cd /var/www/a.dagorret.com.ar && php artisan schedule:run >> /dev/null 2>&1
+```
+
+No se requiere modificar el crontab desde Faro. Si se cambia `APP_TIMEZONE`, hay que regenerar la caché de configuración usada en producción.
+
 ---
 
 ## I) Medios
@@ -1726,5 +1758,3 @@ Faro 1
 La misión original ya está cumplida.
 
 Ahora toca afilar la máquina.
-
-

@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Models\Menu;
 use App\Models\Post;
 use App\Models\Site;
+use App\Services\SitePublishedMediaSelector;
 use App\Services\StaticContentCompiler;
 use App\Services\StaticDistPathResolver;
 use App\Services\StaticSchemaGenerator;
@@ -17,6 +18,7 @@ use FilesystemIterator;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
@@ -111,7 +113,7 @@ class SiteBuildCommand extends Command
 
         if ($section === 'logo') {
             try {
-                $this->processMediaAssets($targetFolder);
+                $this->processMediaAssets($site, $targetFolder);
                 $this->publishStaticFiles($targetFolder);
             } catch (Throwable $exception) {
                 report($exception);
@@ -203,7 +205,7 @@ class SiteBuildCommand extends Command
         try {
             $this->regenerateGlobalStructures($site, $targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
-            $this->processMediaAssets($targetFolder);
+            $this->processMediaAssets($site, $targetFolder);
             $this->publishStaticFiles($targetFolder);
             $this->publishViteAssets($targetFolder);
             $this->writeStaticOutputSignature($targetFolder);
@@ -308,7 +310,7 @@ class SiteBuildCommand extends Command
         try {
             $this->regenerateGlobalStructures($site, $targetFolder);
             $this->synchronizePublishedEntryFolders($site, $targetFolder);
-            $this->processMediaAssets($targetFolder);
+            $this->processMediaAssets($site, $targetFolder);
             $this->publishStaticFiles($targetFolder);
             $this->publishViteAssets($targetFolder);
             $this->writeStaticOutputSignature($targetFolder);
@@ -940,7 +942,7 @@ class SiteBuildCommand extends Command
         }
     }
 
-    protected function processMediaAssets(string $targetFolder): void
+    protected function processMediaAssets(Site $site, string $targetFolder): void
     {
         $mediaBasePath = trim((string) config('static_cms.media.base_path'), '/');
 
@@ -977,11 +979,11 @@ class SiteBuildCommand extends Command
             $this->warn("   ⚠️  No existe la carpeta de medios generales: {$sourcePath}");
         }
 
-        foreach (Media::query()->orderBy('id')->lazyById(200) as $media) {
-            $mediaSource = dirname($media->getPath());
+        foreach (app(SitePublishedMediaSelector::class)->forSite($site) as $media) {
+            $mediaSource = $this->resolveRequiredSpatieMediaSource($media, $site);
 
-            if (! File::isDirectory($mediaSource) || is_link($mediaSource)) {
-                throw new RuntimeException("No se pudo resolver el directorio seguro del medio Spatie [{$media->getKey()}].");
+            if ($mediaSource === null) {
+                continue;
             }
 
             $mediaDestination = $this->joinPath($destinationPath, (string) $media->getKey());
@@ -1001,6 +1003,91 @@ class SiteBuildCommand extends Command
         if ($optimize && $typeStorage === 'copy') {
             $this->optimizeCopiedMediaAssets($destinationPath);
         }
+    }
+
+    protected function resolveRequiredSpatieMediaSource(Media $media, Site $site): ?string
+    {
+        $mediaPath = $media->getPath();
+        $mediaSource = dirname($mediaPath);
+
+        if (is_link($mediaPath) || is_link($mediaSource)) {
+            throw new RuntimeException(
+                'El medio Spatie requerido usa un enlace simbolico no permitido. '.$this->requiredMediaContext($media, $site),
+            );
+        }
+
+        if (! File::isFile($mediaPath) || ! File::isDirectory($mediaSource)) {
+            $this->warn('   ⚠️  '.$this->missingRequiredMediaMessage($media, $site).' Se omite este medio.');
+
+            return null;
+        }
+
+        $realMediaPath = realpath($mediaPath);
+        $realMediaSource = realpath($mediaSource);
+        $diskRoot = Storage::disk($media->disk)->path('');
+        $realDiskRoot = realpath($diskRoot);
+
+        if ($realMediaPath === false
+            || $realMediaSource === false
+            || $realDiskRoot === false
+            || ! $this->pathIsInside($realMediaPath, $realDiskRoot)
+            || ! $this->pathIsInside($realMediaSource, $realDiskRoot)) {
+            throw new RuntimeException(
+                'La ruta del medio Spatie requerido no es segura. '.$this->requiredMediaContext($media, $site),
+            );
+        }
+
+        foreach (array_keys(array_filter($media->generated_conversions ?? [])) as $conversionName) {
+            $conversionPath = $media->getPath((string) $conversionName);
+
+            if (is_link($conversionPath)) {
+                throw new RuntimeException(
+                    "La conversion [{$conversionName}] usa un enlace simbolico no permitido. "
+                    .$this->requiredMediaContext($media, $site),
+                );
+            }
+
+            if (! File::isFile($conversionPath)) {
+                $this->warn(
+                    "   ⚠️  Falta la conversion fisica [{$conversionName}]. "
+                    .$this->requiredMediaContext($media, $site).' Se omite esta conversion.',
+                );
+
+                continue;
+            }
+
+            $conversionRoot = realpath(Storage::disk($media->conversions_disk ?: $media->disk)->path(''));
+            $realConversionPath = realpath($conversionPath);
+
+            if ($conversionRoot === false
+                || $realConversionPath === false
+                || ! $this->pathIsInside($realConversionPath, $conversionRoot)
+                || ! $this->pathIsInside($realConversionPath, $realMediaSource)) {
+                throw new RuntimeException(
+                    "La ruta de la conversion [{$conversionName}] no es segura. "
+                    .$this->requiredMediaContext($media, $site),
+                );
+            }
+        }
+
+        return $realMediaSource;
+    }
+
+    protected function missingRequiredMediaMessage(Media $media, Site $site): string
+    {
+        return 'Falta el archivo fisico de un medio Spatie requerido. '.$this->requiredMediaContext($media, $site);
+    }
+
+    protected function requiredMediaContext(Media $media, Site $site): string
+    {
+        return "site={$site->short_name}, media_id={$media->getKey()}, file_name={$media->file_name}, "
+            ."model_type={$media->model_type}, model_id={$media->model_id}, collection={$media->collection_name}.";
+    }
+
+    protected function pathIsInside(string $path, string $root): bool
+    {
+        return $path === $root
+            || str_starts_with($path, rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR);
     }
 
     protected function publishMediaDirectoryContents(string $source, string $destination, string $typeStorage): void

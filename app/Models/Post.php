@@ -6,6 +6,8 @@ use App\Support\MediaReferenceResolver;
 use App\Support\PostBodyMathDetector;
 use App\Support\PostBodyRenderer;
 use Athphane\FilamentEditorjs\Traits\ModelHasEditorJsComponent;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -122,6 +124,21 @@ class Post extends Model implements HasMedia
     public function isPublished(): bool
     {
         return $this->status === self::STATUS_PUBLISHED;
+    }
+
+    public function isDueForPublication(?CarbonInterface $at = null): bool
+    {
+        return $this->status === self::STATUS_SCHEDULED
+            && $this->published_at !== null
+            && $this->published_at->lte($at ?? now());
+    }
+
+    public function scopeDueForPublication(Builder $query, ?CarbonInterface $at = null): Builder
+    {
+        return $query
+            ->where('status', self::STATUS_SCHEDULED)
+            ->whereNotNull('published_at')
+            ->where('published_at', '<=', $at ?? now());
     }
 
     public static function normalizeSlug(string $value): string

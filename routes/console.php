@@ -2,9 +2,13 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-use App\Console\Commands\SiteBuildCommand;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('posts:publish-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping(15)
+    ->name('faro:posts:publish-scheduled');
