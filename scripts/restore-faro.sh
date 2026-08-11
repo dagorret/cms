@@ -13,7 +13,6 @@ if [[ $# -ne 1 ]]; then
 fi
 
 ARCHIVE="$1"
-STAMP="$(date +%F_%H-%M-%S)"
 
 if [[ ! -f "$ARCHIVE" ]]; then
     echo "ERROR: no existe el backup:" >&2
@@ -24,28 +23,58 @@ fi
 TMP="$(mktemp -d)"
 
 MAINTENANCE=0
+RESTORE_STARTED=0
+RESTORE_OK=0
 
 cleanup() {
 
     rm -rf "$TMP"
 
+    if [[ "$RESTORE_STARTED" -eq 1 && "$RESTORE_OK" -eq 0 ]]; then
+
+        echo
+        echo "ERROR: el restore fallo."
+        echo "Se conservan los directorios *.pre-restore para recuperacion manual."
+        echo
+
+    fi
+
     if [[ "$MAINTENANCE" -eq 1 ]]; then
         echo "==> Saliendo de mantenimiento"
-        "$SITE/php" "$SITE/artisan" up || true
+
+        (
+            cd "$SITE"
+            ./php artisan up
+        ) || true
     fi
 }
 
 trap cleanup EXIT
 
-echo "==> Verificando archivo"
+
+# ------------------------------------------------------------
+# 1. Verificar archivo
+# ------------------------------------------------------------
+
+echo "==> Verificando archivo comprimido"
+
 tar -tzf "$ARCHIVE" >/dev/null
 
+
+# ------------------------------------------------------------
+# 2. Extraer a staging
+# ------------------------------------------------------------
+
 echo "==> Extrayendo a staging"
+
 tar -xzf "$ARCHIVE" -C "$TMP"
 
+
+# ------------------------------------------------------------
+# 3. Componentes obligatorios
 #
-# Un restore valido exige las tres unidades fundamentales.
-#
+# database + media + dist se restauran juntos.
+# ------------------------------------------------------------
 
 REQUIRED=(
     "$TMP/database/database.sqlite"
@@ -64,9 +93,29 @@ for ITEM in "${REQUIRED[@]}"; do
 
 done
 
+
+# ------------------------------------------------------------
+# 4. Verificar hashes ANTES de abrir SQLite
+# ------------------------------------------------------------
+
+if [[ -f "$TMP/SHA256SUMS" ]]; then
+
+    echo "==> Verificando hashes"
+
+    (
+        cd "$TMP"
+        sha256sum -c SHA256SUMS
+    )
+
+fi
+
+
+# ------------------------------------------------------------
+# 5. Verificar SQLite
 #
-# Verificar SQLite ANTES de tocar produccion.
-#
+# Si el backup incluye WAL, debe estar junto a database.sqlite
+# durante esta validacion.
+# ------------------------------------------------------------
 
 echo "==> Verificando SQLite del backup"
 
@@ -81,20 +130,10 @@ if [[ "$CHECK" != "ok" ]]; then
     exit 1
 fi
 
-#
-# Si hay SHA256SUMS, comprobarlo.
-#
 
-if [[ -f "$TMP/SHA256SUMS" ]]; then
-
-    echo "==> Verificando hashes"
-
-    (
-        cd "$TMP"
-        sha256sum -c SHA256SUMS
-    )
-
-fi
+# ------------------------------------------------------------
+# 6. Confirmacion humana
+# ------------------------------------------------------------
 
 echo
 echo "Backup:"
@@ -117,34 +156,45 @@ if [[ "$CONFIRM" != "RESTAURAR" ]]; then
     exit 0
 fi
 
-#
-# Backup automatico del estado que estamos a punto de reemplazar.
-#
+
+# ------------------------------------------------------------
+# 7. Backup automatico inmediatamente antes del restore
+# ------------------------------------------------------------
 
 echo "==> Creando backup de seguridad previo al restore"
 
 "$BACKUP_SCRIPT"
 
-#
-# Bloquear escrituras administrativas durante el cambio.
-# El sitio publico en dist sigue siendo estatico.
-#
+
+# ------------------------------------------------------------
+# 8. Modo mantenimiento
+# ------------------------------------------------------------
 
 echo "==> Faro en modo mantenimiento"
 
-"$SITE/php" "$SITE/artisan" down
+(
+    cd "$SITE"
+    ./php artisan down
+)
 
 MAINTENANCE=1
 
-#
-# Preparar las nuevas copias dentro del mismo filesystem.
-#
 
-echo "==> Preparando restore"
+# ------------------------------------------------------------
+# 9. Preparar copias nuevas
+#
+# Todavia NO tocamos los datos activos.
+# ------------------------------------------------------------
+
+echo "==> Preparando archivos restaurados"
 
 rm -rf \
     "$SITE/storage/app/public.restore-new" \
     "$SITE/dist.restore-new"
+
+rm -f \
+    "$SITE/database/database.sqlite.restore-new" \
+    "$SITE/database/database.sqlite-wal.restore-new"
 
 cp -a \
     "$TMP/storage/app/public" \
@@ -159,87 +209,98 @@ cp -a \
     "$SITE/database/database.sqlite.restore-new"
 
 if [[ -f "$TMP/database/database.sqlite-wal" ]]; then
-
     cp -a \
         "$TMP/database/database.sqlite-wal" \
         "$SITE/database/database.sqlite-wal.restore-new"
-
 fi
 
-if [[ -f "$TMP/database/database.sqlite-shm" ]]; then
 
-    cp -a \
-        "$TMP/database/database.sqlite-shm" \
-        "$SITE/database/database.sqlite-shm.restore-new"
+# ------------------------------------------------------------
+# 10. Verificar la SQLite preparada
+# ------------------------------------------------------------
 
+CHECK="$(
+    sqlite3 "$SITE/database/database.sqlite.restore-new" \
+        'PRAGMA integrity_check;'
+)"
+
+if [[ "$CHECK" != "ok" ]]; then
+    echo "ERROR: SQLite preparada no paso integrity_check." >&2
+    echo "$CHECK" >&2
+    exit 1
 fi
 
-#
-# Sustituir media y dist.
-#
-# mv dentro del mismo filesystem minimiza la ventana
-# de estados parciales.
-#
+
+# ------------------------------------------------------------
+# 11. Comienza el reemplazo real
+# ------------------------------------------------------------
+
+RESTORE_STARTED=1
+
+echo "==> Guardando estado actual como pre-restore"
 
 rm -rf \
     "$SITE/storage/app/public.pre-restore" \
     "$SITE/dist.pre-restore"
+
+rm -f \
+    "$SITE/database/database.sqlite.pre-restore" \
+    "$SITE/database/database.sqlite-wal.pre-restore"
 
 mv \
     "$SITE/storage/app/public" \
     "$SITE/storage/app/public.pre-restore"
 
 mv \
-    "$SITE/storage/app/public.restore-new" \
-    "$SITE/storage/app/public"
-
-mv \
     "$SITE/dist" \
     "$SITE/dist.pre-restore"
 
 mv \
+    "$SITE/database/database.sqlite" \
+    "$SITE/database/database.sqlite.pre-restore"
+
+if [[ -f "$SITE/database/database.sqlite-wal" ]]; then
+    mv \
+        "$SITE/database/database.sqlite-wal" \
+        "$SITE/database/database.sqlite-wal.pre-restore"
+fi
+
+# SHM es transitorio. No se restaura.
+rm -f "$SITE/database/database.sqlite-shm"
+
+
+# ------------------------------------------------------------
+# 12. Activar snapshot restaurado
+# ------------------------------------------------------------
+
+echo "==> Activando snapshot restaurado"
+
+mv \
+    "$SITE/storage/app/public.restore-new" \
+    "$SITE/storage/app/public"
+
+mv \
     "$SITE/dist.restore-new" \
     "$SITE/dist"
-
-#
-# Sustituir SQLite.
-#
-
-rm -f \
-    "$SITE/database/database.sqlite-wal" \
-    "$SITE/database/database.sqlite-shm"
 
 mv \
     "$SITE/database/database.sqlite.restore-new" \
     "$SITE/database/database.sqlite"
 
 if [[ -f "$SITE/database/database.sqlite-wal.restore-new" ]]; then
-
     mv \
         "$SITE/database/database.sqlite-wal.restore-new" \
         "$SITE/database/database.sqlite-wal"
-
 fi
-
-if [[ -f "$SITE/database/database.sqlite-shm.restore-new" ]]; then
-
-    mv \
-        "$SITE/database/database.sqlite-shm.restore-new" \
-        "$SITE/database/database.sqlite-shm"
-
-fi
-
-#
-# Configuracion del mismo snapshot.
-#
 
 cp -a \
     "$TMP/.env" \
     "$SITE/.env"
 
-#
-# Verificacion posterior.
-#
+
+# ------------------------------------------------------------
+# 13. Verificacion definitiva
+# ------------------------------------------------------------
 
 echo "==> Verificando SQLite restaurada"
 
@@ -254,16 +315,40 @@ if [[ "$CHECK" != "ok" ]]; then
     exit 1
 fi
 
+
+# ------------------------------------------------------------
+# 14. Restore confirmado
+# ------------------------------------------------------------
+
+RESTORE_OK=1
+
+echo "==> Restore completado correctamente"
+
+
+# ------------------------------------------------------------
+# 15. Salir de mantenimiento
+# ------------------------------------------------------------
+
+(
+    cd "$SITE"
+    ./php artisan up
+)
+
+MAINTENANCE=0
+
+
+# ------------------------------------------------------------
+# 16. Limpiar copias pre-restore
 #
-# Si todo salio bien, las copias pre-restore ya no son necesarias:
-# el backup previo completo esta guardado en /home/motorola/backup.
-#
+# Ya tenemos tambien el .tgz creado justo antes del restore.
+# ------------------------------------------------------------
 
 rm -rf \
     "$SITE/storage/app/public.pre-restore" \
     "$SITE/dist.pre-restore"
 
-echo "==> Restore completado correctamente"
+rm -f \
+    "$SITE/database/database.sqlite.pre-restore" \
+    "$SITE/database/database.sqlite-wal.pre-restore"
 
-"$SITE/php" "$SITE/artisan" up
-MAINTENANCE=0
+echo "==> Faro restaurado y operativo"

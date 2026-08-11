@@ -8,7 +8,9 @@ BACKUP_DIR="/home/motorola/backup"
 RETENTION_MINUTES=14400   # 10 dias
 
 STAMP="$(date +%F_%H-%M-%S)"
+
 OUT="$BACKUP_DIR/faro-$STAMP.tgz"
+PART="$BACKUP_DIR/.faro-$STAMP.tgz.part"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -16,10 +18,19 @@ TMP="$(mktemp -d "$BACKUP_DIR/.faro-backup.XXXXXX")"
 
 cleanup() {
     rm -rf "$TMP"
+    rm -f "$PART"
 }
+
 trap cleanup EXIT
 
+
+# ------------------------------------------------------------
 # Evitar dos backups simultaneos.
+#
+# El archivo .backup.lock puede existir permanentemente.
+# flock solo evita que dos procesos hagan backup al mismo tiempo.
+# ------------------------------------------------------------
+
 exec 9>"$BACKUP_DIR/.backup.lock"
 
 if ! flock -n 9; then
@@ -27,14 +38,19 @@ if ! flock -n 9; then
     exit 1
 fi
 
+
 echo "==> Iniciando backup FaroCMS: $STAMP"
 
-#
+
+# ------------------------------------------------------------
 # 1. SQLite
 #
-# Faro usa WAL. Copiamos database.sqlite y, si existen,
-# los archivos WAL/SHM correspondientes.
+# Faro usa WAL.
+# Copiamos database.sqlite y, si existen en ese momento,
+# database.sqlite-wal y database.sqlite-shm.
 #
+# Los tres pertenecen al mismo snapshot de backup.
+# ------------------------------------------------------------
 
 mkdir -p "$TMP/database"
 
@@ -54,11 +70,12 @@ if [[ -f "$SITE/database/database.sqlite-shm" ]]; then
         "$TMP/database/database.sqlite-shm"
 fi
 
-#
+
+# ------------------------------------------------------------
 # 2. Medios originales
 #
-# SQLite + storage/app/public forman una unidad de recuperacion.
-#
+# database + storage/app/public deben viajar juntos.
+# ------------------------------------------------------------
 
 mkdir -p "$TMP/storage/app"
 
@@ -66,38 +83,44 @@ cp -a \
     "$SITE/storage/app/public" \
     "$TMP/storage/app/public"
 
-#
+
+# ------------------------------------------------------------
 # 3. Sitio estatico publicado
 #
-# dist es tambien una segunda fuente de recuperacion:
-# contiene HTML renderizado y copias de medios publicados.
+# dist es una segunda fuente de recuperacion:
 #
+# - conserva el HTML publicado;
+# - conserva texto renderizado;
+# - conserva copias de medios publicados;
+# - permite recuperar contenido incluso ante perdida parcial
+#   de BD o storage.
+# ------------------------------------------------------------
 
 cp -a \
     "$SITE/dist" \
     "$TMP/dist"
 
-#
-# 4. Configuracion necesaria para una recuperacion completa
-#
+
+# ------------------------------------------------------------
+# 4. Configuracion
+# ------------------------------------------------------------
 
 cp -a \
     "$SITE/.env" \
     "$TMP/.env"
 
-#
-# 5. Verificar la copia de SQLite
-#
-# Al estar WAL/SHM junto al database.sqlite, SQLite puede
-# interpretar correctamente el snapshot copiado.
-#
+
+# ------------------------------------------------------------
+# 5. Verificar SQLite copiada
+# ------------------------------------------------------------
 
 CHECK="$(
     sqlite3 "$TMP/database/database.sqlite" \
         'PRAGMA integrity_check;'
 )"
 
-printf '%s\n' "$CHECK" > "$TMP/sqlite-integrity.txt"
+printf '%s\n' "$CHECK" \
+    > "$TMP/sqlite-integrity.txt"
 
 if [[ "$CHECK" != "ok" ]]; then
     echo "ERROR: integrity_check de SQLite fallo:" >&2
@@ -105,12 +128,12 @@ if [[ "$CHECK" != "ok" ]]; then
     exit 1
 fi
 
+
+# ------------------------------------------------------------
+# 6. Metadata Git opcional
 #
-# 6. Metadata Git opcional.
-#
-# No hacemos fallar el backup si el repositorio pertenece
-# a otro usuario.
-#
+# No hacemos fallar el backup por ownership del repositorio.
+# ------------------------------------------------------------
 
 if git -C "$SITE" rev-parse HEAD >/dev/null 2>&1; then
 
@@ -130,9 +153,12 @@ else
 
 fi
 
+
+# ------------------------------------------------------------
+# 7. Manifiesto SHA256
 #
-# 7. Manifiesto de hashes
-#
+# Permite verificar posteriormente archivos recuperados.
+# ------------------------------------------------------------
 
 (
     cd "$TMP"
@@ -146,26 +172,51 @@ fi
         > SHA256SUMS
 )
 
+
+# ------------------------------------------------------------
+# 8. Crear backup como archivo PARCIAL
 #
-# 8. Crear archivo final
+# Mientras se genera:
 #
+#   .faro-....tgz.part
+#
+# Un archivo faro-....tgz solo existira si el backup
+# termino y pudo verificarse.
+# ------------------------------------------------------------
+
+echo "==> Comprimiendo backup..."
 
 tar \
     -C "$TMP" \
-    -czf "$OUT" \
+    -czf "$PART" \
     .
 
-chmod 600 "$OUT"
 
-#
-# 9. Comprobar que el tar puede leerse
-#
+# ------------------------------------------------------------
+# 9. Verificar el archivo comprimido
+# ------------------------------------------------------------
 
-tar -tzf "$OUT" >/dev/null
+echo "==> Verificando archivo comprimido..."
 
+tar -tzf "$PART" >/dev/null
+
+
+# ------------------------------------------------------------
+# 10. Convertir el backup parcial en backup valido
 #
-# 10. Retencion de 10 dias
-#
+# mv dentro del mismo filesystem es practicamente instantaneo.
+# ------------------------------------------------------------
+
+chmod 600 "$PART"
+
+mv \
+    "$PART" \
+    "$OUT"
+
+
+# ------------------------------------------------------------
+# 11. Retencion: 10 dias
+# ------------------------------------------------------------
 
 find "$BACKUP_DIR" \
     -type f \
@@ -173,6 +224,22 @@ find "$BACKUP_DIR" \
     -mmin +"$RETENTION_MINUTES" \
     -delete
 
+
+# ------------------------------------------------------------
+# 12. Limpiar .part abandonados de ejecuciones antiguas
+#
+# Por ejemplo, despues de un corte de energia.
+# Solo eliminamos parciales con mas de 24 horas.
+# ------------------------------------------------------------
+
+find "$BACKUP_DIR" \
+    -type f \
+    -name '.faro-*.tgz.part' \
+    -mmin +1440 \
+    -delete
+
+
+echo
 echo "==> Backup completado"
 echo "    $OUT"
 
