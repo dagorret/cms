@@ -212,7 +212,10 @@
         -webkit-overflow-scrolling: touch;
     }
 
+
     .article-content mjx-container[display="true"] > svg {
+        display: block;
+        margin-inline: auto;
         min-width: max-content;
     }
 

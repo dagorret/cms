@@ -64,8 +64,16 @@
         resize() {
             if (!this.input || this.readOnly) return;
 
-            this.input.style.height = 'auto';
-            this.input.style.height = `${Math.max(this.input.scrollHeight, 224)}px`;
+            const textarea = this.input;
+            const selectionStart = textarea.selectionStart;
+            const selectionEnd = textarea.selectionEnd;
+
+            textarea.style.height = 'auto';
+            textarea.style.height = `${Math.max(textarea.scrollHeight, 224)}px`;
+
+            if (selectionStart !== null && selectionEnd !== null) {
+                textarea.setSelectionRange(selectionStart, selectionEnd);
+            }
         }
 
         destroy() {
