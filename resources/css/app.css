@@ -207,6 +207,7 @@
         overflow-x: auto;
         overflow-y: hidden;
         padding-block: 0.5rem;
+        text-align: center;
         overscroll-behavior-inline: contain;
         -webkit-overflow-scrolling: touch;
     }
