@@ -299,13 +299,22 @@ class StaticSchemaGenerator
         if ($feedFile === false) {
             throw new RuntimeException("No se pudo escribir [{$feedPath}].");
         }
+
         $siteTitle = htmlspecialchars($this->site->long_name ?? $this->site->name ?? config('app.name'), ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $siteDescription = htmlspecialchars($this->site->description ?? $this->site->long_name ?? config('app.name'), ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $feedLink = htmlspecialchars("{$fullBaseUrl}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $atomSelfLink = htmlspecialchars("{$fullBaseUrl}/feed.xml", ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         try {
-            fwrite($feedFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL.'<rss version="2.0">'.PHP_EOL.'  <channel>'.PHP_EOL);
+            fwrite($feedFile, '<?xml version="1.0" encoding="UTF-8"?>'.PHP_EOL);
+            fwrite($feedFile, '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">'.PHP_EOL);
+            fwrite($feedFile, '  <channel>'.PHP_EOL);
             fwrite($feedFile, "    <title>{$siteTitle}</title>".PHP_EOL);
             fwrite($feedFile, "    <link>{$feedLink}</link>".PHP_EOL);
+            fwrite($feedFile, "    <description>{$siteDescription}</description>".PHP_EOL);
+            fwrite($feedFile, '    <language>es</language>'.PHP_EOL);
+            fwrite($feedFile, "    <atom:link href=\"{$atomSelfLink}\" rel=\"self\" type=\"application/rss+xml\" />".PHP_EOL);
+
             foreach ($posts as $post) {
                 $url = htmlspecialchars("{$fullBaseUrl}/{$post->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
                 $title = htmlspecialchars($post->title, ENT_XML1 | ENT_QUOTES, 'UTF-8');
@@ -324,7 +333,6 @@ class StaticSchemaGenerator
             fclose($feedFile);
         }
     }
-
     protected function streamArchiveDay(string $path, string $year, string $month, string $day, int $total, string $publicPath): void
     {
         $marker = '__CMS_FARO_STREAMED_ARCHIVE_POSTS__';
