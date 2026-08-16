@@ -317,14 +317,19 @@ class StaticSchemaGenerator
 
             foreach ($posts as $post) {
                 $url = htmlspecialchars("{$fullBaseUrl}/{$post->slug}/", ENT_XML1 | ENT_QUOTES, 'UTF-8');
-                $title = htmlspecialchars($post->title, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                
+                // Sanitización de caracteres invisibles Unicode (Zero-Width Space, BOM, etc.)
+                $cleanTitle = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $post->title);
+                $title = htmlspecialchars($cleanTitle, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
                 fwrite($feedFile, '    <item>'.PHP_EOL);
                 fwrite($feedFile, "      <title>{$title}</title>".PHP_EOL);
                 fwrite($feedFile, "      <link>{$url}</link>".PHP_EOL);
                 fwrite($feedFile, "      <guid>{$url}</guid>".PHP_EOL);
                 fwrite($feedFile, '      <pubDate>'.$post->created_at->toRssString().'</pubDate>'.PHP_EOL);
                 if ($post->category) {
-                    fwrite($feedFile, '      <category>'.htmlspecialchars($post->category->name, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</category>'.PHP_EOL);
+                    $cleanCategory = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $post->category->name);
+                    fwrite($feedFile, '      <category>'.htmlspecialchars($cleanCategory, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</category>'.PHP_EOL);
                 }
                 fwrite($feedFile, '    </item>'.PHP_EOL);
             }
@@ -333,6 +338,7 @@ class StaticSchemaGenerator
             fclose($feedFile);
         }
     }
+
     protected function streamArchiveDay(string $path, string $year, string $month, string $day, int $total, string $publicPath): void
     {
         $marker = '__CMS_FARO_STREAMED_ARCHIVE_POSTS__';
