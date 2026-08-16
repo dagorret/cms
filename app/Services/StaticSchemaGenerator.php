@@ -7,7 +7,7 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
-use App\Support\MenuRenderer;
+use App\Services\MenuRenderer;
 use App\Support\PostBodyRenderer;
 use App\Support\StaticHtmlCleaner;
 use App\Support\StaticViteAssets;
