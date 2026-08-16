@@ -9,7 +9,7 @@ use App\Models\Post;
 use App\Models\Site;
 use App\Services\MenuRenderer;
 use App\Support\PostBodyRenderer;
-use App\Support\StaticHtmlCleaner;
+use App\Services\StaticHtmlCleaner;
 use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
