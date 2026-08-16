@@ -7,7 +7,9 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\Site;
+use App\Support\MenuRenderer;
 use App\Support\PostBodyRenderer;
+use App\Support\StaticHtmlCleaner;
 use App\Support\StaticViteAssets;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -590,7 +592,7 @@ class StaticSchemaGenerator
 
     protected function publicPath(): string
     {
-        return $this->site->publicPath();
+        return method_exists($this->site, 'publicPath') ? $this->site->publicPath() : '';
     }
 
     protected function joinPublicPath(string $publicPath, string $path): string
