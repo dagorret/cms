@@ -65,6 +65,7 @@
     @endif
     <meta property="article:author" content="{{ $seoBrand }}">
     @endif
+    <meta name="google-adsense-account" content="ca-pub-0053981429687697">
 
     @yield('jsonld')
 
